@@ -31,6 +31,7 @@ runs:
 
     - name: Install dependencies
       shell: bash
+      working-directory: ${{ github.workspace }}
       run: npm ci
 
     - name: Prepare release assets
@@ -40,6 +41,7 @@ runs:
         ZIP_NAME: ${{ inputs.zip-name }}
         ZIP_INCLUDES: ${{ inputs.zip-includes }}
         GITHUB_REPO: ${{ github.repository }}
+      working-directory: ${{ github.workspace }}
       run: node ${{ github.action_path }}/scripts/prepare-release-assets.cjs
 
     - name: Semantic Release
@@ -47,6 +49,7 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
+      working-directory: ${{ github.workspace }}
       run: |
         output=$(npx semantic-release 2>&1)
         echo "$output"
@@ -64,4 +67,5 @@ runs:
         DISCORD_THREAD_ID: ${{ inputs.discord-thread-id }}
         KIT_NAME: ${{ inputs.kit-name }}
         GITHUB_REPO: ${{ github.repository }}
+      working-directory: ${{ github.workspace }}
       run: node ${{ github.action_path }}/scripts/send-discord-release.cjs

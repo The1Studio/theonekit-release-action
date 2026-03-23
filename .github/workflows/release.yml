@@ -1,0 +1,90 @@
+name: TheOneKit Release
+on:
+  workflow_call:
+    inputs:
+      kit-name:
+        description: 'Display name (e.g., "TheOneKit Unity")'
+        required: true
+        type: string
+      zip-name:
+        description: 'ZIP filename (e.g., "theonekit-unity.zip")'
+        required: true
+        type: string
+      zip-includes:
+        description: 'Space-separated paths to include in ZIP'
+        required: false
+        type: string
+        default: '.claude/'
+      discord-thread-id:
+        description: 'Discord thread ID for notifications'
+        required: true
+        type: string
+    secrets:
+      discord-webhook-url:
+        description: 'Discord webhook URL'
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: [self-hosted, arc, the1studio, org]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: |
+          if [ -f "bun.lock" ] || [ -f "bunfig.toml" ]; then
+            bun install && bun run build 2>/dev/null || true
+          fi
+          npm ci
+
+      - name: Download release scripts
+        run: |
+          mkdir -p .release-scripts
+          curl -sL "https://raw.githubusercontent.com/The1Studio/theonekit-release-action/main/scripts/prepare-release-assets.cjs" -o .release-scripts/prepare-release-assets.cjs
+          curl -sL "https://raw.githubusercontent.com/The1Studio/theonekit-release-action/main/scripts/send-discord-release.cjs" -o .release-scripts/send-discord-release.cjs
+
+      - name: Prepare release assets
+        env:
+          KIT_NAME: ${{ inputs.kit-name }}
+          ZIP_NAME: ${{ inputs.zip-name }}
+          ZIP_INCLUDES: ${{ inputs.zip-includes }}
+          GITHUB_REPO: ${{ github.repository }}
+        run: node .release-scripts/prepare-release-assets.cjs
+
+      - name: Semantic Release
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          output=$(npx semantic-release 2>&1)
+          echo "$output"
+          if echo "$output" | grep -q "Published release"; then
+            echo "new_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "new_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Notify Discord
+        if: steps.release.outputs.new_release == 'true'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.discord-webhook-url }}
+          DISCORD_THREAD_ID: ${{ inputs.discord-thread-id }}
+          KIT_NAME: ${{ inputs.kit-name }}
+          GITHUB_REPO: ${{ github.repository }}
+        run: node .release-scripts/send-discord-release.cjs
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf .release-scripts

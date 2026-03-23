@@ -29,11 +29,6 @@ runs:
       with:
         node-version: 20
 
-    - name: Install dependencies
-      shell: bash
-      working-directory: ${{ github.workspace }}
-      run: npm ci
-
     - name: Prepare release assets
       shell: bash
       env:

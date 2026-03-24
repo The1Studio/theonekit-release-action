@@ -48,6 +48,18 @@ runs:
       working-directory: ${{ github.workspace }}
       run: node ${{ github.action_path }}/scripts/generate-module-keywords.cjs
 
+    - name: Inject shared hook scripts
+      if: inputs.modules-validation == 'true'
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        mkdir -p .claude/scripts
+        for script in generate-baseline-context.sh check-module-keywords.sh; do
+          cp "${{ github.action_path }}/scripts/$script" ".claude/scripts/$script"
+          chmod +x ".claude/scripts/$script"
+        done
+        echo "[inject] Hook scripts injected from release-action"
+
     - name: Prepare release assets
       shell: bash
       env:

@@ -62,8 +62,12 @@ jobs:
       - name: Download release scripts
         run: |
           mkdir -p .release-scripts
+          # Use GitHub API to avoid raw.githubusercontent.com caching
           for script in prepare-release-assets.cjs send-discord-release.cjs validate-modules.cjs generate-module-keywords.cjs; do
-            curl -sL "https://raw.githubusercontent.com/The1Studio/theonekit-release-action/main/scripts/$script" -o ".release-scripts/$script"
+            curl -sL -H "Authorization: token ${{ github.token }}" \
+              -H "Accept: application/vnd.github.v3.raw" \
+              "https://api.github.com/repos/The1Studio/theonekit-release-action/contents/scripts/$script?ref=main" \
+              -o ".release-scripts/$script"
           done
 
       - name: Validate modules

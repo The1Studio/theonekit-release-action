@@ -173,9 +173,14 @@ const metadata = {
   ...(deletions.length > 0 && { deletions }),
 };
 
-const metadataPath = path.join(ROOT, '.claude', 'metadata.json');
-fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2) + '\n');
-console.log(`[metadata] Updated ${metadataPath} → v${PKG.version}`);
+const claudeDir = path.join(ROOT, '.claude');
+if (fs.existsSync(claudeDir)) {
+  const metadataPath = path.join(claudeDir, 'metadata.json');
+  fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2) + '\n');
+  console.log(`[metadata] Updated ${metadataPath} → v${PKG.version}`);
+} else {
+  console.log('[metadata] No .claude/ directory — skipping metadata.json (non-kit repo)');
+}
 
 // Step 4: Create dist/ directory
 if (!fs.existsSync(DIST)) {
@@ -203,18 +208,25 @@ const excludes = [
 const excludeArgs = excludes.map((e) => `-x '${e}'`).join(' ');
 const includeArgs = ZIP_INCLUDES.join(' ');
 
-console.log(`[bundle] Including: ${includeArgs}`);
+// Check if any included paths exist before trying to ZIP
+const existingIncludes = ZIP_INCLUDES.filter((p) => fs.existsSync(path.join(ROOT, p)));
+if (existingIncludes.length === 0) {
+  console.log(`[bundle] No includable paths found (${ZIP_INCLUDES.join(', ')}). Skipping ZIP.`);
+} else {
+  const includeArgs = existingIncludes.join(' ');
+  console.log(`[bundle] Including: ${includeArgs}`);
 
-try {
-  execSync(`cd "${ROOT}" && zip -r "${zipPath}" ${includeArgs} ${excludeArgs}`, {
-    stdio: 'inherit',
-  });
-  const stats = fs.statSync(zipPath);
-  const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
-  console.log(`[bundle] Created ${zipPath} (${sizeMB} MB)`);
-} catch (err) {
-  console.error('[bundle] Failed to create ZIP:', err.message);
-  process.exit(1);
+  try {
+    execSync(`cd "${ROOT}" && zip -r "${zipPath}" ${includeArgs} ${excludeArgs}`, {
+      stdio: 'inherit',
+    });
+    const stats = fs.statSync(zipPath);
+    const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
+    console.log(`[bundle] Created ${zipPath} (${sizeMB} MB)`);
+  } catch (err) {
+    console.error('[bundle] Failed to create ZIP:', err.message);
+    process.exit(1);
+  }
 }
 
 console.log('[done] Release assets ready');

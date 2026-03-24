@@ -7,6 +7,7 @@
  *   ZIP_NAME     — output ZIP filename (e.g. "theonekit-unity.zip")
  *   ZIP_INCLUDES — space-separated paths to include (default: ".claude/")
  *   GITHUB_REPO  — owner/repo (e.g. "The1Studio/theonekit-unity")
+ *   MODULES_FILE — path to t1k-modules.json (optional; enables module metadata)
  */
 
 const fs = require('fs');
@@ -21,6 +22,7 @@ const KIT_NAME = process.env.KIT_NAME;
 const ZIP_NAME = process.env.ZIP_NAME;
 const GITHUB_REPO = process.env.GITHUB_REPO || PKG.repository?.url?.match(/github\.com[:/](.+?)(?:\.git)?$/)?.[1] || 'unknown/unknown';
 const ZIP_INCLUDES = (process.env.ZIP_INCLUDES || '.claude/').trim().split(/\s+/).filter(Boolean);
+const MODULES_FILE = process.env.MODULES_FILE || '';
 
 if (!KIT_NAME) { console.error('[X] KIT_NAME env var not set'); process.exit(1); }
 if (!ZIP_NAME) { console.error('[X] ZIP_NAME env var not set'); process.exit(1); }
@@ -117,13 +119,57 @@ function computeDeletions() {
 
 const deletions = computeDeletions();
 
-// Step 2: Update metadata.json (with auto-computed deletions)
+// Step 2a: Read module info (modular kits only)
+function readModulesInfo() {
+  if (!MODULES_FILE) return null;
+  const modulesPath = path.join(ROOT, MODULES_FILE);
+  if (!fs.existsSync(modulesPath)) {
+    console.log(`[modules] ${MODULES_FILE} not found — treating as flat kit`);
+    return null;
+  }
+  let registry;
+  try {
+    registry = JSON.parse(fs.readFileSync(modulesPath, 'utf8'));
+  } catch (e) {
+    console.error(`[modules] Failed to parse ${MODULES_FILE}: ${e.message}`);
+    process.exit(1);
+  }
+  const mods = registry.modules || {};
+  const info = {
+    hasModules: true,
+    moduleCount: Object.keys(mods).length,
+    presetCount: Object.keys(registry.presets || {}).length,
+    modules: Object.entries(mods).map(([name, mod]) => ({
+      name,
+      ...(mod.version && { version: mod.version }),
+      ...(mod.required !== undefined && { required: mod.required }),
+    })),
+  };
+  console.log(`[modules] Detected modular kit: ${info.moduleCount} module(s), ${info.presetCount} preset(s)`);
+  return info;
+}
+
+// Step 2b: Copy t1k-modules.json into .claude/ so it's included in ZIP
+function copyModulesFile() {
+  if (!MODULES_FILE) return;
+  const src = path.join(ROOT, MODULES_FILE);
+  if (!fs.existsSync(src)) return;
+  const dst = path.join(ROOT, '.claude', 't1k-modules.json');
+  fs.copyFileSync(src, dst);
+  console.log(`[modules] Copied ${MODULES_FILE} → .claude/t1k-modules.json`);
+}
+
+const modulesInfo = readModulesInfo();
+copyModulesFile();
+
+// Step 3: Update metadata.json (with auto-computed deletions and optional module info)
 const kitSlug = KIT_NAME.toLowerCase().replace(/\s+/g, '-');
 const metadata = {
   name: kitSlug,
   version: PKG.version,
   buildDate: new Date().toISOString(),
   repository: GITHUB_REPO,
+  ...(modulesInfo && { hasModules: true, moduleCount: modulesInfo.moduleCount, modules: modulesInfo.modules }),
   ...(deletions.length > 0 && { deletions }),
 };
 
@@ -131,12 +177,12 @@ const metadataPath = path.join(ROOT, '.claude', 'metadata.json');
 fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2) + '\n');
 console.log(`[metadata] Updated ${metadataPath} → v${PKG.version}`);
 
-// Step 3: Create dist/ directory
+// Step 4: Create dist/ directory
 if (!fs.existsSync(DIST)) {
   fs.mkdirSync(DIST, { recursive: true });
 }
 
-// Step 4: Bundle ZIP
+// Step 5: Bundle ZIP
 const zipPath = path.join(DIST, ZIP_NAME);
 if (fs.existsSync(zipPath)) {
   fs.unlinkSync(zipPath);

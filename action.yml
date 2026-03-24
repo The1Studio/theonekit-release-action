@@ -11,6 +11,10 @@ inputs:
     description: 'Space-separated paths to include in ZIP'
     required: false
     default: '.claude/'
+  modules-validation:
+    description: 'Enable module validation (true for modular kits)'
+    required: false
+    default: 'false'
   discord-thread-id:
     description: 'Discord thread ID for notifications'
     required: true

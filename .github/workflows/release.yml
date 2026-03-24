@@ -15,6 +15,16 @@ on:
         required: false
         type: string
         default: '.claude/'
+      modular:
+        description: 'Enable module validation (set true for modular kits)'
+        required: false
+        type: boolean
+        default: false
+      modules-file:
+        description: 'Path to t1k-modules.json (relative to repo root)'
+        required: false
+        type: string
+        default: 't1k-modules.json'
       discord-thread-id:
         description: 'Discord thread ID for notifications'
         required: true
@@ -52,8 +62,21 @@ jobs:
       - name: Download release scripts
         run: |
           mkdir -p .release-scripts
-          curl -sL "https://raw.githubusercontent.com/The1Studio/theonekit-release-action/main/scripts/prepare-release-assets.cjs" -o .release-scripts/prepare-release-assets.cjs
-          curl -sL "https://raw.githubusercontent.com/The1Studio/theonekit-release-action/main/scripts/send-discord-release.cjs" -o .release-scripts/send-discord-release.cjs
+          for script in prepare-release-assets.cjs send-discord-release.cjs validate-modules.cjs generate-module-keywords.cjs; do
+            curl -sL "https://raw.githubusercontent.com/The1Studio/theonekit-release-action/main/scripts/$script" -o ".release-scripts/$script"
+          done
+
+      - name: Validate modules
+        if: inputs.modular == true
+        env:
+          MODULES_FILE: ${{ inputs.modules-file }}
+        run: node .release-scripts/validate-modules.cjs
+
+      - name: Generate module keywords
+        if: inputs.modular == true
+        env:
+          MODULES_FILE: ${{ inputs.modules-file }}
+        run: node .release-scripts/generate-module-keywords.cjs
 
       - name: Prepare release assets
         env:
@@ -61,6 +84,7 @@ jobs:
           ZIP_NAME: ${{ inputs.zip-name }}
           ZIP_INCLUDES: ${{ inputs.zip-includes }}
           GITHUB_REPO: ${{ github.repository }}
+          MODULES_FILE: ${{ inputs.modular && inputs.modules-file || '' }}
         run: node .release-scripts/prepare-release-assets.cjs
 
       - name: Semantic Release

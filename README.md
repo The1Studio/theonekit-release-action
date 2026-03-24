@@ -4,34 +4,35 @@ Reusable GitHub Action for TheOneKit repos. Handles semantic-release, ZIP bundli
 
 ## Usage
 
+### Flat kit (default)
+
 ```yaml
 # .github/workflows/release.yml
-name: Release
-on:
-  push:
-    branches: [main]
-
-permissions:
-  contents: write
-  packages: write
-  issues: write
-  pull-requests: write
-
 jobs:
   release:
-    runs-on: [self-hosted, arc, the1studio, org]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+    uses: The1Studio/theonekit-release-action/.github/workflows/release.yml@main
+    with:
+      kit-name: 'TheOneKit Core'
+      zip-name: 'theonekit-core.zip'
+      discord-thread-id: '1484931860659306698'
+    secrets:
+      discord-webhook-url: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+```
 
-      - uses: The1Studio/theonekit-release-action@v1
-        with:
-          kit-name: 'TheOneKit Unity'
-          zip-name: 'theonekit-unity.zip'
-          discord-thread-id: '1484931860659306698'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          discord-webhook-url: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+### Modular kit
+
+```yaml
+# .github/workflows/release.yml
+jobs:
+  release:
+    uses: The1Studio/theonekit-release-action/.github/workflows/release.yml@main
+    with:
+      kit-name: 'TheOneKit Unity'
+      zip-name: 'theonekit-unity.zip'
+      modular: true
+      discord-thread-id: '1484931860659306698'
+    secrets:
+      discord-webhook-url: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
 ```
 
 ## Inputs
@@ -41,15 +42,19 @@ jobs:
 | `kit-name` | Yes | — | Display name for notifications (e.g. `TheOneKit Unity`) |
 | `zip-name` | Yes | — | Output ZIP filename (e.g. `theonekit-unity.zip`) |
 | `zip-includes` | No | `.claude/` | Space-separated paths to include in ZIP |
+| `modular` | No | `false` | Enable module validation for modular kits |
+| `modules-file` | No | `t1k-modules.json` | Path to modules registry (relative to repo root) |
 | `discord-thread-id` | Yes | — | Discord thread ID for release notifications |
 | `github-token` | Yes | — | GitHub token for creating releases |
 | `discord-webhook-url` | Yes | — | Discord webhook URL |
 
 ## What It Does
 
-1. **Prepare assets** — generates `.claude/metadata.json` (version, repo, cumulative deletions) and bundles the ZIP
-2. **Semantic release** — runs `npx semantic-release` to cut a GitHub Release with CHANGELOG
-3. **Discord notify** — parses CHANGELOG.md and sends a formatted embed to the specified thread
+1. **Validate modules** *(modular kits only)* — runs 11 checks on `t1k-modules.json`: schema, file existence, no skill overlap, no keyword conflicts, valid dependencies, no DAG cycles, priority collision detection, preset resolution, kit-wide file placement
+2. **Generate keyword map** *(modular kits only)* — writes `.claude/t1k-modules-keywords-{kit}.json` from all module activation fragments (used by UserPromptSubmit hook to warn about uninstalled modules)
+3. **Prepare assets** — generates `.claude/metadata.json` (version, repo, module list, cumulative deletions) and bundles the ZIP; copies `t1k-modules.json` into `.claude/` for modular kits
+4. **Semantic release** — runs `npx semantic-release` to cut a GitHub Release with CHANGELOG
+5. **Discord notify** — parses CHANGELOG.md and sends a formatted embed to the specified thread
 
 ## Cumulative Deletions
 

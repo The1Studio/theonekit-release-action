@@ -84,15 +84,15 @@ for (const [name, mod] of Object.entries(modules)) {
   // Skills
   if (mod.skills && Array.isArray(mod.skills)) {
     for (const skill of mod.skills) {
-      const skillDir = path.join(ROOT, '.claude', 'skills', skill);
-      if (!fs.existsSync(skillDir)) {
-        // Try as a direct file too
-        const skillFile = path.join(ROOT, '.claude', 'skills', `${skill}.md`);
-        if (!fs.existsSync(skillFile)) {
-          fail(`Skill "${skill}" (module: ${name}) not found at .claude/skills/${skill}/`);
-        } else {
-          pass(`Skill "${skill}" exists (as file)`);
-        }
+      // Search multiple possible locations for skills
+      const skillCandidates = [
+        path.join(ROOT, '.claude', 'skills', skill),
+        path.join(ROOT, '.claude', 'modules', name, 'skills', skill),
+        path.join(ROOT, 'modules', name, 'skills', skill),
+      ];
+      const foundSkill = skillCandidates.some(p => fs.existsSync(p));
+      if (!foundSkill) {
+        fail(`Skill "${skill}" (module: ${name}) not found in .claude/skills/ or modules/${name}/skills/`);
       } else {
         pass(`Skill "${skill}" exists`);
       }
@@ -117,11 +117,14 @@ for (const [name, mod] of Object.entries(modules)) {
     }
   }
 
-  // Activation fragment
+  // Activation fragment — search in .claude/ root, then modules/{name}/
   if (mod.activationFragment) {
-    const fragPath = path.join(ROOT, '.claude', mod.activationFragment);
-    if (!fs.existsSync(fragPath)) {
-      fail(`activationFragment "${mod.activationFragment}" (module: ${name}) not found at .claude/${mod.activationFragment}`);
+    const fragPathRoot = path.join(ROOT, '.claude', mod.activationFragment);
+    const fragPathModule = path.join(ROOT, '.claude', 'modules', name, mod.activationFragment);
+    // Also check repo root modules/ dir (some kits use this layout)
+    const fragPathRepoModule = path.join(ROOT, 'modules', name, mod.activationFragment);
+    if (!fs.existsSync(fragPathRoot) && !fs.existsSync(fragPathModule) && !fs.existsSync(fragPathRepoModule)) {
+      fail(`activationFragment "${mod.activationFragment}" (module: ${name}) not found`);
     } else {
       pass(`activationFragment "${mod.activationFragment}" exists`);
     }
@@ -146,8 +149,14 @@ let kwConflicts = 0;
 
 for (const [name, mod] of Object.entries(modules)) {
   if (!mod.activationFragment) continue;
-  const fragPath = path.join(ROOT, '.claude', mod.activationFragment);
-  if (!fs.existsSync(fragPath)) continue;
+  // Search multiple possible locations for activation fragment
+  const fragCandidates = [
+    path.join(ROOT, '.claude', mod.activationFragment),
+    path.join(ROOT, '.claude', 'modules', name, mod.activationFragment),
+    path.join(ROOT, 'modules', name, mod.activationFragment),
+  ];
+  const fragPath = fragCandidates.find(p => fs.existsSync(p));
+  if (!fragPath) continue;
 
   let frag;
   try {
@@ -180,9 +189,13 @@ console.log('\n[validate] Checking dependency references...');
 
 for (const [name, mod] of Object.entries(modules)) {
   const deps = mod.dependencies;
-  if (!deps || typeof deps !== 'object') continue;
+  if (!deps || !Array.isArray(deps) || deps.length === 0) continue;
 
-  for (const depName of Object.keys(deps)) {
+  for (const depName of deps) {
+    if (typeof depName !== 'string') {
+      fail(`Module "${name}" has non-string dependency: ${JSON.stringify(depName)}`);
+      continue;
+    }
     // Dependencies can be to other modules in same kit OR cross-kit (contains ':')
     if (depName.includes(':')) {
       // Cross-kit: {kit}:{module} — just validate format
@@ -216,7 +229,9 @@ function detectCycles(modName, visited, stack) {
     return false;
   }
 
-  for (const depName of Object.keys(mod.dependencies)) {
+  const depsList = Array.isArray(mod.dependencies) ? mod.dependencies : [];
+  for (const depName of depsList) {
+    if (typeof depName !== 'string') continue;
     // Skip cross-kit deps for cycle detection
     if (depName.includes(':')) continue;
     if (!modules[depName]) continue;
@@ -255,12 +270,14 @@ console.log('\n[validate] Checking priority collisions...');
 function computeDepth(modName, memo = {}) {
   if (memo[modName] !== undefined) return memo[modName];
   const mod = modules[modName];
-  if (!mod || !mod.dependencies || Object.keys(mod.dependencies).length === 0) {
+  const depsList = Array.isArray(mod?.dependencies) ? mod.dependencies : [];
+  if (depsList.length === 0) {
     memo[modName] = 0;
     return 0;
   }
   let maxDep = 0;
-  for (const depName of Object.keys(mod.dependencies)) {
+  for (const depName of depsList) {
+    if (typeof depName !== 'string') continue;
     if (depName.includes(':')) continue; // skip cross-kit
     if (!modules[depName]) continue;
     maxDep = Math.max(maxDep, computeDepth(depName, memo) + 1);
@@ -315,7 +332,12 @@ console.log('\n[validate] Checking preset references...');
 
 const presets = registry.presets || {};
 for (const [presetName, preset] of Object.entries(presets)) {
-  const presetModules = preset.modules || [];
+  // Presets can be: string[] (module list) or "*" (all modules)
+  if (preset === '*') {
+    pass(`Preset "${presetName}": wildcard (*) — includes all modules`);
+    continue;
+  }
+  const presetModules = Array.isArray(preset) ? preset : (preset?.modules || []);
   for (const ref of presetModules) {
     if (ref.includes(':')) {
       // Cross-kit ref: {kit}:{module}

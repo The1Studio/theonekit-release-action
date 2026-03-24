@@ -1,5 +1,5 @@
 name: 'TheOneKit Release'
-description: 'Semantic release with ZIP bundling and Discord notifications for TheOneKit repos'
+description: 'Semantic release with ZIP bundling, module validation, and Discord notifications for TheOneKit repos'
 inputs:
   kit-name:
     description: 'Display name (e.g., "TheOneKit Unity")'
@@ -15,6 +15,10 @@ inputs:
     description: 'Enable module validation (true for modular kits)'
     required: false
     default: 'false'
+  modules-file:
+    description: 'Path to t1k-modules.json (relative to repo root)'
+    required: false
+    default: '.claude/t1k-modules.json'
   discord-thread-id:
     description: 'Discord thread ID for notifications'
     required: true
@@ -28,6 +32,22 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Validate modules
+      if: inputs.modules-validation == 'true'
+      shell: bash
+      env:
+        MODULES_FILE: ${{ inputs.modules-file }}
+      working-directory: ${{ github.workspace }}
+      run: node ${{ github.action_path }}/scripts/validate-modules.cjs
+
+    - name: Generate module keywords
+      if: inputs.modules-validation == 'true'
+      shell: bash
+      env:
+        MODULES_FILE: ${{ inputs.modules-file }}
+      working-directory: ${{ github.workspace }}
+      run: node ${{ github.action_path }}/scripts/generate-module-keywords.cjs
+
     - name: Prepare release assets
       shell: bash
       env:
@@ -35,6 +55,7 @@ runs:
         ZIP_NAME: ${{ inputs.zip-name }}
         ZIP_INCLUDES: ${{ inputs.zip-includes }}
         GITHUB_REPO: ${{ github.repository }}
+        MODULES_FILE: ${{ inputs.modules-validation == 'true' && inputs.modules-file || '' }}
       working-directory: ${{ github.workspace }}
       run: node ${{ github.action_path }}/scripts/prepare-release-assets.cjs
 
@@ -45,9 +66,11 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
       working-directory: ${{ github.workspace }}
       run: |
-        output=$(npx semantic-release 2>&1)
-        echo "$output"
-        if echo "$output" | grep -q "Published release"; then
+        set +e
+        npx semantic-release 2>&1 | tee /tmp/sr-output.txt
+        SR_EXIT=$?
+        set -e
+        if grep -q "Published release" /tmp/sr-output.txt; then
           echo "new_release=true" >> "$GITHUB_OUTPUT"
         else
           echo "new_release=false" >> "$GITHUB_OUTPUT"

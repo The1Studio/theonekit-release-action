@@ -105,12 +105,16 @@ for (const [name, mod] of Object.entries(modules)) {
     }
   }
 
-  // Agents
+  // Agents — search in .claude/agents/, modules/{name}/agents/, .claude/modules/{name}/agents/
   if (mod.agents && Array.isArray(mod.agents)) {
     for (const agent of mod.agents) {
-      const agentPath = path.join(ROOT, '.claude', 'agents', agent);
-      if (!fs.existsSync(agentPath)) {
-        fail(`Agent "${agent}" (module: ${name}) not found at .claude/agents/${agent}`);
+      const agentCandidates = [
+        path.join(ROOT, '.claude', 'agents', agent),
+        path.join(ROOT, '.claude', 'modules', name, 'agents', agent),
+        path.join(ROOT, 'modules', name, 'agents', agent),
+      ];
+      if (!agentCandidates.some(p => fs.existsSync(p))) {
+        fail(`Agent "${agent}" (module: ${name}) not found in .claude/agents/ or modules/${name}/agents/`);
       } else {
         pass(`Agent "${agent}" exists`);
       }
@@ -130,11 +134,15 @@ for (const [name, mod] of Object.entries(modules)) {
     }
   }
 
-  // Routing overlay
+  // Routing overlay — search in .claude/, modules/{name}/, .claude/modules/{name}/
   if (mod.routingOverlay) {
-    const overlayPath = path.join(ROOT, '.claude', mod.routingOverlay);
-    if (!fs.existsSync(overlayPath)) {
-      fail(`routingOverlay "${mod.routingOverlay}" (module: ${name}) not found at .claude/${mod.routingOverlay}`);
+    const overlayCandidates = [
+      path.join(ROOT, '.claude', mod.routingOverlay),
+      path.join(ROOT, '.claude', 'modules', name, mod.routingOverlay),
+      path.join(ROOT, 'modules', name, mod.routingOverlay),
+    ];
+    if (!overlayCandidates.some(p => fs.existsSync(p))) {
+      fail(`routingOverlay "${mod.routingOverlay}" (module: ${name}) not found`);
     } else {
       pass(`routingOverlay "${mod.routingOverlay}" exists`);
     }
@@ -296,8 +304,13 @@ const priorityRoleMap = {}; // `${priority}:${role}` -> module
 
 for (const [name, mod] of Object.entries(modules)) {
   if (!mod.routingOverlay) continue;
-  const overlayPath = path.join(ROOT, '.claude', mod.routingOverlay);
-  if (!fs.existsSync(overlayPath)) continue;
+  const overlayPriorityCandidates = [
+    path.join(ROOT, '.claude', mod.routingOverlay),
+    path.join(ROOT, '.claude', 'modules', name, mod.routingOverlay),
+    path.join(ROOT, 'modules', name, mod.routingOverlay),
+  ];
+  const overlayPath = overlayPriorityCandidates.find(p => fs.existsSync(p));
+  if (!overlayPath) continue;
 
   let overlay;
   try {

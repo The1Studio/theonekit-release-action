@@ -55,7 +55,16 @@ jobs:
       - name: Install dependencies
         run: |
           if [ -f "bun.lock" ] || [ -f "bunfig.toml" ]; then
+            # Install bun if not available (self-hosted runners may not have it)
+            if ! command -v bun &>/dev/null; then
+              echo "Installing bun..."
+              curl -fsSL https://bun.sh/install | bash
+              export BUN_INSTALL="$HOME/.bun"
+              export PATH="$BUN_INSTALL/bin:$PATH"
+            fi
             bun install && bun run build 2>/dev/null || true
+            # Build UI if script exists (for CLI projects with dashboard)
+            bun run ui:build 2>/dev/null || true
           fi
           npm ci
 

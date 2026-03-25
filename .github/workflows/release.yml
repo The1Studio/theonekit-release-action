@@ -59,8 +59,9 @@ jobs:
             if ! command -v bun &>/dev/null; then
               echo "Installing bun..."
               curl -fsSL https://bun.sh/install | bash
-              export BUN_INSTALL="$HOME/.bun"
-              export PATH="$BUN_INSTALL/bin:$PATH"
+              # Persist bun PATH for all subsequent steps (not just this shell)
+              echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+              export PATH="$HOME/.bun/bin:$PATH"
             fi
             bun install && bun run build 2>/dev/null || true
             # Build UI if script exists (for CLI projects with dashboard)
@@ -106,12 +107,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          output=$(npx semantic-release 2>&1)
+          output=$(npx semantic-release 2>&1) || true
           echo "$output"
           if echo "$output" | grep -q "Published release"; then
             echo "new_release=true" >> "$GITHUB_OUTPUT"
           else
             echo "new_release=false" >> "$GITHUB_OUTPUT"
+            # Check if it was an actual error vs just no release needed
+            if echo "$output" | grep -qE "ERR|Error|ELIFECYCLE"; then
+              echo "::error::Semantic release failed"
+              exit 1
+            fi
           fi
 
       - name: Notify Discord

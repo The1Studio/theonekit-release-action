@@ -53,7 +53,7 @@ for KW_FILE in .claude/t1k-modules-keywords-*.json; do
     COUNT=$((COUNT + 1))
     [ $COUNT -gt 3 ] && break
 
-    echo "Note: '$keyword' relates to module '$module' (not installed). Install: t1k modules add $module"
+    echo "[t1k:module-suggest] keyword=\"$keyword\" module=\"$module\" action=\"t1k modules add $module\""
   done
 done
 exit 0

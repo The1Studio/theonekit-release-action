@@ -60,6 +60,14 @@ runs:
         done
         echo "[inject] Hook scripts injected from release-action"
 
+    - name: Inject origin metadata
+      shell: bash
+      env:
+        GITHUB_REPO: ${{ github.repository }}
+        CORE_REPO: 'theonekit-core'
+      working-directory: ${{ github.workspace }}
+      run: node ${{ github.action_path }}/scripts/inject-origin-metadata.cjs
+
     - name: Prepare release assets
       shell: bash
       env:

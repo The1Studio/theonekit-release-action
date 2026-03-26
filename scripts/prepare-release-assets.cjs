@@ -162,6 +162,13 @@ function copyModulesFile() {
 const modulesInfo = readModulesInfo();
 copyModulesFile();
 
+// Step 2c: Flatten module files (modular kits only)
+if (modulesInfo) {
+  const { flattenModuleFiles } = require('./flatten-module-files.cjs');
+  const result = flattenModuleFiles(path.join(ROOT, '.claude'));
+  console.log(`[flatten] Flattened ${result.flattenedCount} file(s) from ${result.moduleCount} module(s)`);
+}
+
 // Step 3: Update metadata.json (with auto-computed deletions and optional module info)
 const kitSlug = KIT_NAME.toLowerCase().replace(/\s+/g, '-');
 const metadata = {

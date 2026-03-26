@@ -60,40 +60,82 @@ function injectMdMetadata(filePath) {
       const fmBlock = content.substring(4, endIdx);
       body = content.substring(endIdx + 5);
 
-      // Parse YAML-like frontmatter (simple key: value)
-      for (const line of fmBlock.split('\n')) {
-        const colonIdx = line.indexOf(':');
-        if (colonIdx > 0 && !line.startsWith(' ') && !line.startsWith('\t')) {
-          const key = line.substring(0, colonIdx).trim();
-          const val = line.substring(colonIdx + 1).trim();
-          frontmatter[key] = val;
+      // Parse YAML-like frontmatter preserving multi-line block scalars (| and >)
+      const fmLines = fmBlock.split('\n');
+      let currentKey = null;
+      let currentLines = [];
+
+      for (const line of fmLines) {
+        const isIndented = line.startsWith(' ') || line.startsWith('\t');
+        if (!isIndented) {
+          // Flush previous key
+          if (currentKey) {
+            frontmatter[currentKey] = currentLines.join('\n');
+          }
+          const colonIdx = line.indexOf(':');
+          if (colonIdx > 0) {
+            currentKey = line.substring(0, colonIdx).trim();
+            currentLines = [line.substring(colonIdx + 1).trimStart()];
+          } else {
+            currentKey = null;
+            currentLines = [];
+          }
+        } else if (currentKey) {
+          // Indented line belongs to current block scalar
+          currentLines.push(line);
         }
+      }
+      // Flush last key
+      if (currentKey) {
+        frontmatter[currentKey] = currentLines.join('\n');
       }
     }
   }
 
   // Set origin metadata fields
+  const metaKeys = ['origin', 'module', 'protected'];
   frontmatter['origin'] = KIT_NAME;
   frontmatter['module'] = moduleName || 'null';
-  // Protected = true only for core kit files
   frontmatter['protected'] = KIT_NAME === CORE_REPO ? 'true' : 'false';
 
-  // Rebuild frontmatter block preserving original field order
-  // Put origin/module/protected at the end
-  const metaKeys = ['origin', 'module', 'protected'];
-  const otherKeys = Object.keys(frontmatter).filter((k) => !metaKeys.includes(k));
-  const orderedKeys = [...otherKeys, ...metaKeys];
-
-  const fmLines = orderedKeys.map((k) => {
-    const v = frontmatter[k];
-    // Multi-line values (description with |) need special handling
-    if (v.startsWith('|') || v.startsWith('>')) {
-      return `${k}: ${v}`;
+  // Rebuild frontmatter: preserve original raw lines, append/update origin fields
+  // Strategy: re-parse original block to preserve exact formatting, then replace/append meta keys
+  let rawFmBlock = '';
+  if (content.startsWith('---\n')) {
+    const endIdx = content.indexOf('\n---\n', 4);
+    if (endIdx !== -1) {
+      rawFmBlock = content.substring(4, endIdx);
     }
-    return `${k}: ${v}`;
-  });
+  }
 
-  const newContent = `---\n${fmLines.join('\n')}\n---\n${body}`;
+  // Remove existing origin/module/protected lines from raw block
+  const cleanedLines = [];
+  const rawLines = rawFmBlock.split('\n');
+  let skipIndented = false;
+  for (const line of rawLines) {
+    const isIndented = line.startsWith(' ') || line.startsWith('\t');
+    if (!isIndented) {
+      skipIndented = false;
+      const colonIdx = line.indexOf(':');
+      if (colonIdx > 0) {
+        const key = line.substring(0, colonIdx).trim();
+        if (metaKeys.includes(key)) {
+          skipIndented = true; // skip any indented continuation lines too
+          continue;
+        }
+      }
+    } else if (skipIndented) {
+      continue;
+    }
+    cleanedLines.push(line);
+  }
+
+  // Append origin metadata at end
+  cleanedLines.push(`origin: ${frontmatter['origin']}`);
+  cleanedLines.push(`module: ${frontmatter['module']}`);
+  cleanedLines.push(`protected: ${frontmatter['protected']}`);
+
+  const newContent = `---\n${cleanedLines.join('\n')}\n---\n${body}`;
   fs.writeFileSync(filePath, newContent);
   mdCount++;
 }

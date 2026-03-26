@@ -117,7 +117,7 @@ function computeDeletions() {
   }
 }
 
-const deletions = computeDeletions();
+let deletions = computeDeletions();
 
 // Step 2a: Read module info (modular kits only)
 function readModulesInfo() {
@@ -167,6 +167,28 @@ if (modulesInfo) {
   const { flattenModuleFiles } = require(path.join(__dirname, 'flatten-module-files.cjs'));
   const result = flattenModuleFiles(path.join(ROOT, '.claude'));
   console.log(`[flatten] Flattened ${result.flattenedCount} file(s) from ${result.moduleCount} module(s)`);
+
+  // Step 2d: Re-filter deletions after flattening — skills that were "deleted" from git
+  // (moved to modules/) but flattened back to .claude/skills/ must NOT appear in deletions.
+  // Without this filter, the CLI's deletion handler removes just-installed flattened skills.
+  if (deletions.length > 0) {
+    const claudeDir = path.join(ROOT, '.claude');
+    const before = deletions.length;
+    deletions = deletions.filter((pattern) => {
+      if (pattern.includes('*')) {
+        // Glob pattern: check if the parent directory now exists after flattening
+        // e.g., "skills/foo/references/**" → check if .claude/skills/foo/references/ exists
+        const dir = path.join(claudeDir, pattern.replace(/\/?\*.*$/, ''));
+        return !fs.existsSync(dir);
+      }
+      // Literal path: check if file now exists after flattening
+      return !fs.existsSync(path.join(claudeDir, pattern));
+    });
+    const removed = before - deletions.length;
+    if (removed > 0) {
+      console.log(`[deletions] Filtered ${removed} deletion(s) that were restored by flattening`);
+    }
+  }
 }
 
 // Step 3: Update metadata.json (with auto-computed deletions and optional module info)

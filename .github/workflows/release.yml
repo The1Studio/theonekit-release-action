@@ -73,7 +73,7 @@ jobs:
         run: |
           mkdir -p .release-scripts
           # Use GitHub API to avoid raw.githubusercontent.com caching
-          for script in prepare-release-assets.cjs send-discord-release.cjs validate-modules.cjs generate-module-keywords.cjs flatten-module-files.cjs inject-origin-metadata.cjs; do
+          for script in prepare-release-assets.cjs send-discord-release.cjs validate-modules.cjs generate-module-keywords.cjs flatten-module-files.cjs inject-origin-metadata.cjs generate-module-docs.cjs; do
             curl -sL -H "Authorization: token ${{ github.token }}" \
               -H "Accept: application/vnd.github.v3.raw" \
               "https://api.github.com/repos/The1Studio/theonekit-release-action/contents/scripts/$script?ref=main" \
@@ -97,6 +97,12 @@ jobs:
           GITHUB_REPO: ${{ github.repository }}
           CORE_REPO: 'theonekit-core'
         run: node .release-scripts/inject-origin-metadata.cjs
+
+      - name: Generate module documentation
+        if: inputs.modular == true
+        env:
+          MODULES_FILE: ${{ inputs.modules-file }}
+        run: node .release-scripts/generate-module-docs.cjs
 
       - name: Prepare release assets
         env:

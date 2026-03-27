@@ -95,8 +95,9 @@ function injectMdMetadata(filePath) {
   }
 
   // Set origin metadata fields
-  const metaKeys = ['origin', 'module', 'protected'];
+  const metaKeys = ['origin', 'repository', 'module', 'protected'];
   frontmatter['origin'] = KIT_NAME;
+  frontmatter['repository'] = GITHUB_REPO;
   frontmatter['module'] = moduleName || 'null';
   frontmatter['protected'] = KIT_NAME === CORE_REPO ? 'true' : 'false';
 
@@ -134,6 +135,7 @@ function injectMdMetadata(filePath) {
 
   // Append origin metadata at end
   cleanedLines.push(`origin: ${frontmatter['origin']}`);
+  cleanedLines.push(`repository: ${frontmatter['repository']}`);
   cleanedLines.push(`module: ${frontmatter['module']}`);
   cleanedLines.push(`protected: ${frontmatter['protected']}`);
 
@@ -159,6 +161,7 @@ function injectJsonMetadata(filePath) {
 
   data._origin = {
     kit: KIT_NAME,
+    repository: GITHUB_REPO,
     module: moduleName || null,
     protected: KIT_NAME === CORE_REPO,
   };

@@ -1,12 +1,13 @@
 /**
  * inject-origin-metadata.cjs
- * Injects origin/module/protected frontmatter into .claude/ files during release.
+ * Injects origin/module/protected metadata into ALL .claude/ files during release.
  *
- * For .md files (skills, agents, rules):
- *   - Adds/updates `origin:`, `module:`, `protected:` in YAML frontmatter
- *
- * For .json files (registry, config):
- *   - Adds/updates `_origin` top-level key
+ * Supported file types:
+ *   .md          — YAML frontmatter (origin, module, protected)
+ *   .json        — top-level `_origin` key
+ *   .cjs, .js    — `// t1k-origin: ...` comment header
+ *   .sh, .py     — `# t1k-origin: ...` comment header
+ *   .yml, .yaml  — `# t1k-origin: ...` comment header
  *
  * Env:
  *   GITHUB_REPO  — owner/repo (e.g. "The1Studio/theonekit-unity")
@@ -29,6 +30,7 @@ if (!fs.existsSync(CLAUDE_DIR)) {
 
 let mdCount = 0;
 let jsonCount = 0;
+let commentCount = 0;
 
 /**
  * Determine module name from file path.
@@ -166,6 +168,44 @@ function injectJsonMetadata(filePath) {
 }
 
 /**
+ * Inject origin comment header into script/config files (.cjs, .js, .sh, .py, .yml, .yaml).
+ * Uses `// t1k-origin:` for JS or `# t1k-origin:` for shell/python/yaml.
+ * Replaces existing t1k-origin line if present; otherwise prepends (after shebang if any).
+ */
+function injectCommentMetadata(filePath, commentPrefix) {
+  const content = fs.readFileSync(filePath, 'utf8');
+  const moduleName = getModuleName(filePath);
+  const isProtected = KIT_NAME === CORE_REPO;
+
+  const originLine = `${commentPrefix} t1k-origin: kit=${KIT_NAME} | repo=${GITHUB_REPO} | module=${moduleName || 'null'} | protected=${isProtected}`;
+
+  // Remove existing t1k-origin line if present
+  const lines = content.split('\n');
+  const filtered = lines.filter(l => !l.includes('t1k-origin:'));
+
+  // Insert after shebang (if present), otherwise at top
+  let insertIdx = 0;
+  if (filtered.length > 0 && filtered[0].startsWith('#!')) {
+    insertIdx = 1;
+  }
+  filtered.splice(insertIdx, 0, originLine);
+
+  fs.writeFileSync(filePath, filtered.join('\n'));
+  commentCount++;
+}
+
+/** File extension → comment prefix mapping */
+const COMMENT_EXTENSIONS = {
+  '.cjs': '//',
+  '.js': '//',
+  '.mjs': '//',
+  '.sh': '#',
+  '.py': '#',
+  '.yml': '#',
+  '.yaml': '#',
+};
+
+/**
  * Recursively walk directory and process files.
  */
 function walkDir(dir) {
@@ -187,6 +227,8 @@ function walkDir(dir) {
         // Skip metadata.json (generated separately) and package.json
         if (entry.name === 'metadata.json' || entry.name === 'package.json') continue;
         injectJsonMetadata(fullPath);
+      } else if (ext in COMMENT_EXTENSIONS) {
+        injectCommentMetadata(fullPath, COMMENT_EXTENSIONS[ext]);
       }
     }
   }
@@ -195,4 +237,4 @@ function walkDir(dir) {
 // Run
 console.log(`[origin] Injecting metadata for kit: ${KIT_NAME}`);
 walkDir(CLAUDE_DIR);
-console.log(`[origin] Done — ${mdCount} .md files, ${jsonCount} .json files updated`);
+console.log(`[origin] Done — ${mdCount} .md, ${jsonCount} .json, ${commentCount} script/config files updated`);

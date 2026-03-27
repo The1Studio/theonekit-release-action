@@ -3,15 +3,22 @@
  * Injects origin/module/protected metadata into ALL .claude/ files during release.
  *
  * Supported file types:
- *   .md          — YAML frontmatter (origin, module, protected)
+ *   .md          — YAML frontmatter (origin, repository, module, protected)
  *   .json        — top-level `_origin` key
  *   .cjs, .js    — `// t1k-origin: ...` comment header
  *   .sh, .py     — `# t1k-origin: ...` comment header
  *   .yml, .yaml  — `# t1k-origin: ...` comment header
  *
+ * Skipped files:
+ *   metadata.json  — generated separately by prepare-release-assets.cjs
+ *   package.json   — npm manifest, not a kit file
+ *   settings.json  — intentionally skipped: user-configurable file, injecting
+ *                    _origin into it would break Claude Code's settings parsing
+ *
  * Env:
- *   GITHUB_REPO  — owner/repo (e.g. "The1Studio/theonekit-unity")
- *   CORE_REPO    — core repo name for protected file detection (default: "theonekit-core")
+ *   GITHUB_REPO   — owner/repo (e.g. "The1Studio/theonekit-unity")
+ *   CORE_REPO     — core repo name for protected file detection (default: "theonekit-core")
+ *   MODULES_FILE  — path to t1k-modules.json (optional; enables skill→module lookup)
  */
 
 const fs = require('fs');
@@ -21,6 +28,7 @@ const ROOT = process.cwd();
 const CLAUDE_DIR = path.join(ROOT, '.claude');
 const GITHUB_REPO = process.env.GITHUB_REPO || 'unknown/unknown';
 const CORE_REPO = process.env.CORE_REPO || 'theonekit-core';
+const MODULES_FILE = process.env.MODULES_FILE || '';
 const KIT_NAME = GITHUB_REPO.split('/').pop(); // e.g. "theonekit-unity"
 
 if (!fs.existsSync(CLAUDE_DIR)) {
@@ -33,19 +41,100 @@ let jsonCount = 0;
 let commentCount = 0;
 
 /**
- * Determine module name from file path.
- * Files in .claude/modules/<name>/... → module = <name>
- * Files elsewhere → module = null
+ * Build a skill→module lookup map from t1k-modules.json.
+ *
+ * For modular kits, skills are flattened from:
+ *   .claude/modules/{module}/skills/{skill}/
+ * to:
+ *   .claude/skills/{skill}/
+ *
+ * When inject-origin-metadata runs before flattening, skills are still in
+ * modules/{module}/skills/ and getModuleName() detects the module from the path.
+ * When inject runs after flattening (or for future-proofing), skills sit at
+ * .claude/skills/ with no module path context — this lookup map resolves them.
+ *
+ * Returns: Map<skillName, moduleName> or empty map for flat kits.
+ */
+function buildSkillModuleMap() {
+  const map = new Map();
+
+  // Prefer MODULES_FILE env var (set by workflow when modular=true)
+  let modulesPath = '';
+  if (MODULES_FILE) {
+    modulesPath = path.isAbsolute(MODULES_FILE)
+      ? MODULES_FILE
+      : path.join(ROOT, MODULES_FILE);
+  } else {
+    // Fallback: check standard locations
+    const candidates = [
+      path.join(ROOT, 't1k-modules.json'),
+      path.join(CLAUDE_DIR, 't1k-modules.json'),
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) {
+        modulesPath = c;
+        break;
+      }
+    }
+  }
+
+  if (!modulesPath || !fs.existsSync(modulesPath)) {
+    return map; // flat kit — no lookup needed
+  }
+
+  let registry;
+  try {
+    registry = JSON.parse(fs.readFileSync(modulesPath, 'utf8'));
+  } catch (e) {
+    console.warn(`[origin] warn: could not parse ${modulesPath}: ${e.message} — module lookup disabled`);
+    return map;
+  }
+
+  const modules = registry.modules || {};
+  for (const [moduleName, mod] of Object.entries(modules)) {
+    for (const skillName of (mod.skills || [])) {
+      map.set(skillName, moduleName);
+    }
+  }
+
+  console.log(`[origin] Module lookup map built: ${map.size} skill(s) across ${Object.keys(modules).length} module(s)`);
+  return map;
+}
+
+const SKILL_MODULE_MAP = buildSkillModuleMap();
+
+/**
+ * Determine module name for a file path.
+ *
+ * Resolution order:
+ *  1. Path-based: file is inside modules/{name}/ → use {name} directly
+ *  2. Skill lookup: file is inside skills/{name}/ → look up in SKILL_MODULE_MAP
+ *  3. Fallback: null (kit-wide file or core)
  */
 function getModuleName(filePath) {
   const rel = path.relative(CLAUDE_DIR, filePath);
-  const match = rel.match(/^modules\/([^/]+)\//);
-  return match ? match[1] : null;
+
+  // 1. Path-based detection (pre-flatten layout: modules/{module}/skills/...)
+  const moduleMatch = rel.match(/^modules\/([^/]+)\//);
+  if (moduleMatch) return moduleMatch[1];
+
+  // 2. Skill lookup (post-flatten layout: skills/{skill}/...)
+  const skillMatch = rel.match(/^skills\/([^/]+)\//);
+  if (skillMatch) {
+    const skillName = skillMatch[1];
+    if (SKILL_MODULE_MAP.has(skillName)) {
+      return SKILL_MODULE_MAP.get(skillName);
+    }
+  }
+
+  // 3. Kit-wide file (rules/, agents/ at root, JSON fragments, etc.)
+  return null;
 }
 
 /**
  * Inject frontmatter fields into a markdown file.
  * Creates frontmatter if missing; updates existing fields.
+ * Always injects all 4 fields: origin, repository, module, protected.
  */
 function injectMdMetadata(filePath) {
   const content = fs.readFileSync(filePath, 'utf8');
@@ -53,65 +142,19 @@ function injectMdMetadata(filePath) {
 
   // Parse existing frontmatter
   let hasFrontmatter = content.startsWith('---\n');
-  let frontmatter = {};
   let body = content;
+  let rawFmBlock = '';
 
   if (hasFrontmatter) {
     const endIdx = content.indexOf('\n---\n', 4);
     if (endIdx !== -1) {
-      const fmBlock = content.substring(4, endIdx);
-      body = content.substring(endIdx + 5);
-
-      // Parse YAML-like frontmatter preserving multi-line block scalars (| and >)
-      const fmLines = fmBlock.split('\n');
-      let currentKey = null;
-      let currentLines = [];
-
-      for (const line of fmLines) {
-        const isIndented = line.startsWith(' ') || line.startsWith('\t');
-        if (!isIndented) {
-          // Flush previous key
-          if (currentKey) {
-            frontmatter[currentKey] = currentLines.join('\n');
-          }
-          const colonIdx = line.indexOf(':');
-          if (colonIdx > 0) {
-            currentKey = line.substring(0, colonIdx).trim();
-            currentLines = [line.substring(colonIdx + 1).trimStart()];
-          } else {
-            currentKey = null;
-            currentLines = [];
-          }
-        } else if (currentKey) {
-          // Indented line belongs to current block scalar
-          currentLines.push(line);
-        }
-      }
-      // Flush last key
-      if (currentKey) {
-        frontmatter[currentKey] = currentLines.join('\n');
-      }
-    }
-  }
-
-  // Set origin metadata fields
-  const metaKeys = ['origin', 'repository', 'module', 'protected'];
-  frontmatter['origin'] = KIT_NAME;
-  frontmatter['repository'] = GITHUB_REPO;
-  frontmatter['module'] = moduleName || 'null';
-  frontmatter['protected'] = KIT_NAME === CORE_REPO ? 'true' : 'false';
-
-  // Rebuild frontmatter: preserve original raw lines, append/update origin fields
-  // Strategy: re-parse original block to preserve exact formatting, then replace/append meta keys
-  let rawFmBlock = '';
-  if (content.startsWith('---\n')) {
-    const endIdx = content.indexOf('\n---\n', 4);
-    if (endIdx !== -1) {
       rawFmBlock = content.substring(4, endIdx);
+      body = content.substring(endIdx + 5);
     }
   }
 
-  // Remove existing origin/module/protected lines from raw block
+  // Remove existing origin metadata lines from raw block
+  const metaKeys = ['origin', 'repository', 'module', 'protected'];
   const cleanedLines = [];
   const rawLines = rawFmBlock.split('\n');
   let skipIndented = false;
@@ -133,11 +176,12 @@ function injectMdMetadata(filePath) {
     cleanedLines.push(line);
   }
 
-  // Append origin metadata at end
-  cleanedLines.push(`origin: ${frontmatter['origin']}`);
-  cleanedLines.push(`repository: ${frontmatter['repository']}`);
-  cleanedLines.push(`module: ${frontmatter['module']}`);
-  cleanedLines.push(`protected: ${frontmatter['protected']}`);
+  // Append all 4 origin metadata fields at end
+  const isProtected = KIT_NAME === CORE_REPO ? 'true' : 'false';
+  cleanedLines.push(`origin: ${KIT_NAME}`);
+  cleanedLines.push(`repository: ${GITHUB_REPO}`);
+  cleanedLines.push(`module: ${moduleName !== null ? moduleName : 'null'}`);
+  cleanedLines.push(`protected: ${isProtected}`);
 
   const newContent = `---\n${cleanedLines.join('\n')}\n---\n${body}`;
   fs.writeFileSync(filePath, newContent);
@@ -146,6 +190,7 @@ function injectMdMetadata(filePath) {
 
 /**
  * Inject _origin key into a JSON file.
+ * Always injects all 4 fields: kit, repository, module, protected.
  */
 function injectJsonMetadata(filePath) {
   const content = fs.readFileSync(filePath, 'utf8');
@@ -162,7 +207,7 @@ function injectJsonMetadata(filePath) {
   data._origin = {
     kit: KIT_NAME,
     repository: GITHUB_REPO,
-    module: moduleName || null,
+    module: moduleName,
     protected: KIT_NAME === CORE_REPO,
   };
 
@@ -174,13 +219,14 @@ function injectJsonMetadata(filePath) {
  * Inject origin comment header into script/config files (.cjs, .js, .sh, .py, .yml, .yaml).
  * Uses `// t1k-origin:` for JS or `# t1k-origin:` for shell/python/yaml.
  * Replaces existing t1k-origin line if present; otherwise prepends (after shebang if any).
+ * Always injects all 4 fields: kit, repo, module, protected.
  */
 function injectCommentMetadata(filePath, commentPrefix) {
   const content = fs.readFileSync(filePath, 'utf8');
   const moduleName = getModuleName(filePath);
   const isProtected = KIT_NAME === CORE_REPO;
 
-  const originLine = `${commentPrefix} t1k-origin: kit=${KIT_NAME} | repo=${GITHUB_REPO} | module=${moduleName || 'null'} | protected=${isProtected}`;
+  const originLine = `${commentPrefix} t1k-origin: kit=${KIT_NAME} | repo=${GITHUB_REPO} | module=${moduleName !== null ? moduleName : 'null'} | protected=${isProtected}`;
 
   // Remove existing t1k-origin line if present
   const lines = content.split('\n');
@@ -209,6 +255,16 @@ const COMMENT_EXTENSIONS = {
 };
 
 /**
+ * JSON files that are intentionally skipped:
+ *   - metadata.json  — generated separately by prepare-release-assets.cjs
+ *   - package.json   — npm manifest
+ *   - settings.json  — user-configurable Claude Code settings; injecting _origin
+ *                      would break Claude Code's settings parsing and override
+ *                      user customizations on install
+ */
+const SKIP_JSON_FILES = new Set(['metadata.json', 'package.json', 'settings.json']);
+
+/**
  * Recursively walk directory and process files.
  */
 function walkDir(dir) {
@@ -227,8 +283,7 @@ function walkDir(dir) {
       if (ext === '.md') {
         injectMdMetadata(fullPath);
       } else if (ext === '.json') {
-        // Skip metadata.json (generated separately) and package.json
-        if (entry.name === 'metadata.json' || entry.name === 'package.json') continue;
+        if (SKIP_JSON_FILES.has(entry.name)) continue;
         injectJsonMetadata(fullPath);
       } else if (ext in COMMENT_EXTENSIONS) {
         injectCommentMetadata(fullPath, COMMENT_EXTENSIONS[ext]);
@@ -239,5 +294,10 @@ function walkDir(dir) {
 
 // Run
 console.log(`[origin] Injecting metadata for kit: ${KIT_NAME}`);
+if (SKILL_MODULE_MAP.size > 0) {
+  console.log(`[origin] Module-aware injection enabled (${SKILL_MODULE_MAP.size} skill mappings loaded)`);
+} else {
+  console.log('[origin] Flat kit or no MODULES_FILE — module field will be null for all non-module paths');
+}
 walkDir(CLAUDE_DIR);
 console.log(`[origin] Done — ${mdCount} .md, ${jsonCount} .json, ${commentCount} script/config files updated`);

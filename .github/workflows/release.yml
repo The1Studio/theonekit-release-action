@@ -96,6 +96,7 @@ jobs:
         env:
           GITHUB_REPO: ${{ github.repository }}
           CORE_REPO: 'theonekit-core'
+          MODULES_FILE: ${{ inputs.modular && inputs.modules-file || '' }}
         run: node .release-scripts/inject-origin-metadata.cjs
 
       - name: Generate module documentation

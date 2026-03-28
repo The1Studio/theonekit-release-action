@@ -71,12 +71,13 @@ function isModulePath(filePath) {
 }
 
 /**
- * Flatten all modules defined in t1k-modules.json into the .claude/ root.
+ * Flatten all modules (or a single module) defined in t1k-modules.json into the .claude/ root.
  *
- * @param {string} claudeDir  Absolute path to the .claude/ directory.
+ * @param {string}  claudeDir   Absolute path to the .claude/ directory.
+ * @param {string}  [targetModule]  If provided, only flatten this specific module.
  * @returns {{ flattenedCount: number, moduleCount: number }}
  */
-function flattenModuleFiles(claudeDir) {
+function flattenModuleFiles(claudeDir, targetModule) {
   const modulesRegistryPath = path.join(claudeDir, 't1k-modules.json');
 
   if (!fs.existsSync(modulesRegistryPath)) {
@@ -94,14 +95,24 @@ function flattenModuleFiles(claudeDir) {
 
   const kitName = registry.kitName || 'unknown';
   const modules = registry.modules || {};
-  const moduleNames = Object.keys(modules);
+  let moduleNames = Object.keys(modules);
 
   if (moduleNames.length === 0) {
     console.log('[flatten] t1k-modules.json has no modules — skipping');
     return { flattenedCount: 0, moduleCount: 0 };
   }
 
-  console.log(`[flatten] Kit: ${kitName} — flattening ${moduleNames.length} module(s)`);
+  // Per-module mode: restrict to a single named module
+  if (targetModule) {
+    if (!modules[targetModule]) {
+      console.error(`[flatten] Module "${targetModule}" not found in t1k-modules.json`);
+      process.exit(1);
+    }
+    moduleNames = [targetModule];
+    console.log(`[flatten] Kit: ${kitName} — flattening module: ${targetModule}`);
+  } else {
+    console.log(`[flatten] Kit: ${kitName} — flattening ${moduleNames.length} module(s)`);
+  }
 
   let totalFlattened = 0;
 
@@ -242,3 +253,14 @@ function flattenModuleFiles(claudeDir) {
 }
 
 module.exports = { flattenModuleFiles };
+
+// CLI entry: node flatten-module-files.cjs <claudeDir> [moduleName]
+if (require.main === module) {
+  const claudeDir = process.argv[2];
+  const targetModule = process.argv[3] || process.env.MODULE_NAME || undefined;
+  if (!claudeDir) {
+    console.error('Usage: node flatten-module-files.cjs <claudeDir> [moduleName]');
+    process.exit(1);
+  }
+  flattenModuleFiles(path.resolve(claudeDir), targetModule);
+}

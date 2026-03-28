@@ -39,6 +39,98 @@ const {
   commitVersionBumps,
 } = require('./release-modules-helpers.cjs');
 
+// ── SSOT sync helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Regenerate the `modules` section of t1k-modules.json from individual module.json files.
+ * module.json is the SSOT for per-module metadata; t1k-modules.json.modules is generated.
+ *
+ * Also regenerates t1k-activation-{module}.json from module.json `activation` fields.
+ *
+ * Preserves: kitName, registryVersion, presets (hand-authored).
+ */
+function syncModulesRegistry(moduleNames, modulesDir, claudeDir, dryRun) {
+  const registryPath = path.join(claudeDir, 't1k-modules.json');
+  let registry;
+  try {
+    registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+  } catch (e) {
+    console.warn(`[release] warn: could not read t1k-modules.json for sync: ${e.message}`);
+    return;
+  }
+
+  const generatedModules = {};
+
+  for (const modName of moduleNames) {
+    const modJson = readModuleJson(path.join(modulesDir, modName));
+    if (!modJson) {
+      console.warn(`[release] warn: no module.json for "${modName}" — skipping sync`);
+      continue;
+    }
+
+    // Build t1k-modules.json module entry from module.json (stripping version, kit, name fields)
+    generatedModules[modName] = {
+      description:        modJson.description || '',
+      required:           modJson.required || false,
+      // Convert object deps {modName: semverRange} → string array for backward compat
+      dependencies:       Array.isArray(modJson.dependencies)
+                            ? modJson.dependencies
+                            : Object.keys(modJson.dependencies || {}),
+      skills:             modJson.skills || [],
+      ...(modJson.agents?.length    ? { agents: modJson.agents }                     : {}),
+      ...(modJson.activation        ? { activationFragment: `t1k-activation-${modName}.json` } : {}),
+      ...(modJson.routingOverlay    ? { routingOverlay: modJson.routingOverlay }      : {}),
+    };
+
+    // Regenerate t1k-activation-{module}.json from module.json activation field
+    if (modJson.activation) {
+      syncActivationFragment(modName, modJson, registry.kitName, claudeDir, dryRun);
+    }
+  }
+
+  // Write back with generated marker on modules section
+  const updated = {
+    registryVersion:  registry.registryVersion,
+    kitName:          registry.kitName,
+    _modulesGeneratedFrom: 'module.json files — edit modules/*/module.json instead',
+    modules:          generatedModules,
+    presets:          registry.presets,
+  };
+
+  if (!dryRun) {
+    fs.writeFileSync(registryPath, JSON.stringify(updated, null, 2) + '\n');
+    console.log(`[release] Synced t1k-modules.json modules section from ${moduleNames.length} module.json files`);
+  } else {
+    console.log(`[release] dry-run: would sync t1k-modules.json from module.json files`);
+  }
+}
+
+/**
+ * Generate t1k-activation-{module}.json from module.json activation field.
+ * module.json activation is the SSOT; the activation fragment file is generated.
+ */
+function syncActivationFragment(modName, modJson, kitName, claudeDir, dryRun) {
+  const activation = modJson.activation;
+  if (!activation) return;
+
+  const fragPath = path.join(claudeDir, `t1k-activation-${modName}.json`);
+  const fragment = {
+    _generatedFrom: `module.json activation field — edit modules/${modName}/module.json instead`,
+    registryVersion: 1,
+    kitName,
+    priority: 91,  // module-level priority base
+    ...(activation.sessionBaseline?.length ? { sessionBaseline: activation.sessionBaseline } : {}),
+    mappings: activation.mappings || [],
+  };
+
+  if (!dryRun) {
+    fs.writeFileSync(fragPath, JSON.stringify(fragment, null, 2) + '\n');
+    console.log(`[release]   Generated t1k-activation-${modName}.json`);
+  } else {
+    console.log(`[release] dry-run: would generate t1k-activation-${modName}.json`);
+  }
+}
+
 // ── CLI args ──────────────────────────────────────────────────────────────────
 
 const args      = process.argv.slice(2);
@@ -159,6 +251,13 @@ async function main() {
   }
   console.log(`\n[release] ${moduleNames.length} module(s): ${moduleNames.join(', ')}`);
 
+  // Step 1b: Sync t1k-modules.json and activation fragments from module.json (SSOT)
+  // module.json is authoritative; t1k-modules.json.modules and t1k-activation-*.json are generated.
+  syncModulesRegistry(moduleNames, MODULES_DIR, CLAUDE_DIR, dryRun);
+
+  // Reload registry after sync to get freshly generated data
+  const syncedRegistry = dryRun ? registry : readModulesRegistry(CLAUDE_DIR);
+
   // Step 2: Analyze commits
   const { affectedModules, breakingAll, hasChanges, lastTag } =
     analyzeCommits(KIT_DIR, moduleNames, kitName);
@@ -170,7 +269,7 @@ async function main() {
 
   // Step 3: Bump versions
   const { moduleVersions, bumpedModules } =
-    applyVersionBumps(moduleNames, registry, affectedModules, breakingAll);
+    applyVersionBumps(moduleNames, syncedRegistry, affectedModules, breakingAll);
 
   // Step 4: Build ZIPs
   const outputDir = dryRun
@@ -178,7 +277,7 @@ async function main() {
     : path.join(KIT_DIR, 'dist', 'modules');
   fs.mkdirSync(outputDir, { recursive: true });
 
-  const moduleAssets = buildAllZips(moduleNames, registry, moduleVersions, kitName, kitRepo, outputDir);
+  const moduleAssets = buildAllZips(moduleNames, syncedRegistry, moduleVersions, kitName, kitRepo, outputDir);
 
   // Step 5: Build release manifest.json
   const releaseTag   = buildReleaseTag();

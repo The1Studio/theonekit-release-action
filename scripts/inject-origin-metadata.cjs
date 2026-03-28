@@ -296,14 +296,16 @@ const COMMENT_EXTENSIONS = {
 };
 
 /**
- * JSON files that are intentionally skipped:
- *   - metadata.json  — generated separately by prepare-release-assets.cjs
- *   - package.json   — npm manifest
- *   - settings.json  — user-configurable Claude Code settings; injecting _origin
- *                      would break Claude Code's settings parsing and override
- *                      user customizations on install
+ * JSON files that are intentionally skipped.
+ * Defaults: metadata.json (separate pipeline), package.json (npm), settings.json (user-configurable).
+ * Override by setting SKIP_ORIGIN_FILES env var as a comma-separated list of filenames.
  */
-const SKIP_JSON_FILES = new Set(['metadata.json', 'package.json', 'settings.json']);
+const DEFAULT_SKIP_JSON = ['metadata.json', 'package.json', 'settings.json'];
+const SKIP_JSON_FILES = new Set(
+  process.env.SKIP_ORIGIN_FILES
+    ? process.env.SKIP_ORIGIN_FILES.split(',').map(f => f.trim()).filter(Boolean)
+    : DEFAULT_SKIP_JSON
+);
 
 /**
  * Recursively walk directory and process files.

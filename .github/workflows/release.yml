@@ -163,6 +163,7 @@ jobs:
 
       - name: Notify Discord
         if: (steps.release.outputs.new_release == 'true' || steps.module-release.outputs.new_release == 'true') && inputs.discord-thread-id != ''
+        continue-on-error: true
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.discord-webhook-url }}
           DISCORD_THREAD_ID: ${{ inputs.discord-thread-id }}

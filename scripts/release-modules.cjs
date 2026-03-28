@@ -1,0 +1,204 @@
+/**
+ * release-modules.cjs
+ * Orchestrator for per-module releases. Replaces semantic-release for modular kits.
+ *
+ * Steps:
+ *   1. Discover modules + read t1k-modules.json registry
+ *   2. Parse conventional commits since last release tag
+ *   3. Compute per-module semver bumps, write updated module.json files
+ *   4. Build per-module ZIPs for ALL modules (rolling release strategy)
+ *   5. Build release manifest.json
+ *   6. Create GitHub Release with all assets + per-module tags
+ *   7. Commit bumped module.json files back to repo
+ *
+ * Usage:
+ *   node release-modules.cjs --kit-dir /path/to/kit-repo [--dry-run]
+ *
+ * Env:
+ *   GITHUB_REPO  — owner/repo (auto-detected from git remote if absent)
+ *   KIT_NAME     — display name (e.g. "TheOneKit Unity")
+ *   GITHUB_TOKEN — required by gh CLI in CI
+ */
+
+'use strict';
+
+const fs   = require('fs');
+const path = require('path');
+const os   = require('os');
+
+const { analyzeCommits }                          = require('./parse-commits.cjs');
+const { computeBumpType, applyBump }              = require('./compute-version-bump.cjs');
+const { buildModuleZip }                          = require('./build-module-zip.cjs');
+const { buildReleaseManifest, readModuleJson }    = require('./build-release-manifest.cjs');
+const { createGithubRelease }                     = require('./create-github-release.cjs');
+const {
+  resolveKitRepo,
+  readModulesRegistry,
+  listModuleNames,
+  buildReleaseTag,
+  commitVersionBumps,
+} = require('./release-modules-helpers.cjs');
+
+// ── CLI args ──────────────────────────────────────────────────────────────────
+
+const args      = process.argv.slice(2);
+const kitDirArg = args[args.indexOf('--kit-dir') + 1];
+const dryRun    = args.includes('--dry-run');
+
+if (!kitDirArg) {
+  console.error('[release] Usage: node release-modules.cjs --kit-dir <path> [--dry-run]');
+  process.exit(1);
+}
+
+const KIT_DIR    = path.resolve(kitDirArg);
+const CLAUDE_DIR = path.join(KIT_DIR, '.claude');
+const MODULES_DIR = path.join(CLAUDE_DIR, 'modules');
+
+if (!fs.existsSync(KIT_DIR)) {
+  console.error(`[release] Kit directory not found: ${KIT_DIR}`);
+  process.exit(1);
+}
+
+// ── Version bump phase ────────────────────────────────────────────────────────
+
+/**
+ * For each module: compute bump from commits, update module.json if changed.
+ * Returns { moduleVersions: Map, bumpedModules: string[] }.
+ */
+function applyVersionBumps(moduleNames, registry, affectedModules, breakingAll) {
+  const moduleVersions = {};
+  const bumpedModules  = [];
+
+  for (const modName of moduleNames) {
+    const modJsonPath = path.join(MODULES_DIR, modName, 'module.json');
+    const modJson     = readModuleJson(path.join(MODULES_DIR, modName));
+
+    if (!modJson) {
+      console.warn(`[release] warn: no module.json for "${modName}" — using 0.0.0`);
+      moduleVersions[modName] = '0.0.0';
+      continue;
+    }
+
+    const commits = affectedModules.get(modName) || [];
+    let bump = computeBumpType(commits);
+    // Global breaking change forces major on all modules
+    if (breakingAll) bump = 'major';
+
+    const current = modJson.version || '0.0.0';
+    const next    = bump !== 'none' ? applyBump(current, bump) : current;
+    moduleVersions[modName] = next;
+
+    if (next !== current) {
+      console.log(`[release] ${modName}: ${current} -> ${next} (${bump})`);
+      if (!dryRun) {
+        modJson.version = next;
+        fs.writeFileSync(modJsonPath, JSON.stringify(modJson, null, 2) + '\n');
+      }
+      bumpedModules.push(modName);
+    } else {
+      console.log(`[release] ${modName}: ${current} (no change)`);
+    }
+  }
+
+  return { moduleVersions, bumpedModules };
+}
+
+// ── ZIP build phase ───────────────────────────────────────────────────────────
+
+/**
+ * Build per-module ZIPs for all modules into outputDir.
+ * Returns array of { name, version, zipPath, manifest }.
+ */
+function buildAllZips(moduleNames, registry, moduleVersions, kitName, kitRepo, outputDir) {
+  const assets = [];
+
+  for (const modName of moduleNames) {
+    const moduleEntry = registry.modules?.[modName];
+    if (!moduleEntry) {
+      console.warn(`[release] warn: ${modName} not in t1k-modules.json — skipping ZIP`);
+      continue;
+    }
+
+    const version = moduleVersions[modName] || '0.0.0';
+    const { zipPath, manifest } = buildModuleZip({
+      moduleName:  modName,
+      version,
+      kitName,
+      kitRepo,
+      moduleEntry,
+      kitDir:      KIT_DIR,
+      outputDir,
+      dryRun,
+    });
+
+    assets.push({ name: modName, version, zipPath, manifest });
+  }
+
+  return assets;
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+async function main() {
+  console.log(`\n${'='.repeat(60)}`);
+  console.log('[release] TheOneKit Module Release');
+  console.log(`[release] Kit dir: ${KIT_DIR}`);
+  if (dryRun) console.log('[release] DRY RUN — no files will be written or pushed');
+  console.log('='.repeat(60));
+
+  // Step 1: Discover modules
+  const registry       = readModulesRegistry(CLAUDE_DIR);
+  const kitName        = registry.kitName || path.basename(KIT_DIR);
+  const kitDisplayName = process.env.KIT_NAME || kitName;
+  const kitRepo        = resolveKitRepo(KIT_DIR);
+  const moduleNames    = listModuleNames(MODULES_DIR);
+
+  if (moduleNames.length === 0) {
+    console.log('[release] No modules found — nothing to release');
+    process.exit(0);
+  }
+  console.log(`\n[release] ${moduleNames.length} module(s): ${moduleNames.join(', ')}`);
+
+  // Step 2: Analyze commits
+  const { affectedModules, breakingAll, hasChanges, lastTag } =
+    analyzeCommits(KIT_DIR, moduleNames, kitName);
+
+  if (!hasChanges && lastTag) {
+    console.log('\n[release] No releasable commits since last tag — exiting');
+    process.exit(0);
+  }
+
+  // Step 3: Bump versions
+  const { moduleVersions, bumpedModules } =
+    applyVersionBumps(moduleNames, registry, affectedModules, breakingAll);
+
+  // Step 4: Build ZIPs
+  const outputDir = dryRun
+    ? path.join(os.tmpdir(), `t1k-release-dry-${Date.now()}`)
+    : path.join(KIT_DIR, 'dist', 'modules');
+  fs.mkdirSync(outputDir, { recursive: true });
+
+  const moduleAssets = buildAllZips(moduleNames, registry, moduleVersions, kitName, kitRepo, outputDir);
+
+  // Step 5: Build release manifest.json
+  const releaseTag   = buildReleaseTag();
+  const manifestPath = path.join(outputDir, 'manifest.json');
+  buildReleaseManifest({ kitName, kitRepo, releaseTag, kitDir: KIT_DIR, outputPath: manifestPath, dryRun });
+
+  // Step 6: Create GitHub Release + per-module tags
+  createGithubRelease({ releaseTag, kitName: kitDisplayName, kitRepo, kitDir: KIT_DIR, manifestPath, moduleAssets, dryRun });
+
+  // Step 7: Commit version bumps
+  commitVersionBumps(KIT_DIR, bumpedModules, dryRun);
+
+  console.log(`\n${'='.repeat(60)}`);
+  console.log(`[release] Done — ${moduleAssets.length} module(s) released as ${releaseTag}`);
+  if (dryRun) console.log('[release] DRY RUN complete — no changes persisted');
+  console.log('='.repeat(60));
+}
+
+main().catch(err => {
+  console.error(`\n[release] FATAL: ${err.message}`);
+  if (process.env.DEBUG) console.error(err.stack);
+  process.exit(1);
+});

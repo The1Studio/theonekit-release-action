@@ -4,11 +4,15 @@ inputs:
   kit-name:
     description: 'Display name (e.g., "TheOneKit Unity")'
     required: true
+  release-mode:
+    description: 'Release mode: "semantic-release" (flat kits) or "modules" (modular kits)'
+    required: false
+    default: 'semantic-release'
   zip-name:
-    description: 'ZIP filename (e.g., "theonekit-unity.zip")'
-    required: true
+    description: 'ZIP filename for semantic-release mode (e.g., "theonekit-unity.zip")'
+    required: false
   zip-includes:
-    description: 'Space-separated paths to include in ZIP'
+    description: 'Space-separated paths to include in ZIP (semantic-release mode only)'
     required: false
     default: '.claude/'
   modules-validation:
@@ -82,6 +86,7 @@ runs:
 
     - name: Semantic Release
       id: release
+      if: inputs.release-mode != 'modules'
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
@@ -97,8 +102,24 @@ runs:
           echo "new_release=false" >> "$GITHUB_OUTPUT"
         fi
 
+    - name: Module Release
+      id: module-release
+      if: inputs.release-mode == 'modules'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REPO: ${{ github.repository }}
+        KIT_NAME: ${{ inputs.kit-name }}
+      working-directory: ${{ github.workspace }}
+      run: |
+        node ${{ github.action_path }}/scripts/release-modules.cjs \
+          --kit-dir "${{ github.workspace }}"
+        echo "new_release=true" >> "$GITHUB_OUTPUT"
+
     - name: Notify Discord
-      if: steps.release.outputs.new_release == 'true'
+      if: >
+        (inputs.release-mode != 'modules' && steps.release.outputs.new_release == 'true') ||
+        (inputs.release-mode == 'modules' && steps.module-release.outputs.new_release == 'true')
       shell: bash
       env:
         DISCORD_WEBHOOK_URL: ${{ inputs.discord-webhook-url }}

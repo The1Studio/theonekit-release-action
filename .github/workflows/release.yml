@@ -26,13 +26,14 @@ on:
         type: string
         default: 't1k-modules.json'
       discord-thread-id:
-        description: 'Discord thread ID for notifications'
-        required: true
+        description: 'Discord thread ID for notifications (optional — skip Discord if empty)'
+        required: false
         type: string
+        default: ''
     secrets:
       discord-webhook-url:
-        description: 'Discord webhook URL'
-        required: true
+        description: 'Discord webhook URL (optional — skip Discord if empty)'
+        required: false
 
 permissions:
   contents: write
@@ -135,7 +136,7 @@ jobs:
           fi
 
       - name: Notify Discord
-        if: steps.release.outputs.new_release == 'true'
+        if: steps.release.outputs.new_release == 'true' && inputs.discord-thread-id != ''
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.discord-webhook-url }}
           DISCORD_THREAD_ID: ${{ inputs.discord-thread-id }}

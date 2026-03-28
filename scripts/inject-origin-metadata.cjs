@@ -19,6 +19,7 @@
  *   GITHUB_REPO   — owner/repo (e.g. "The1Studio/theonekit-unity")
  *   CORE_REPO     — core repo name for protected file detection (default: "theonekit-core")
  *   MODULES_FILE  — path to t1k-modules.json (optional; enables skill→module lookup)
+ *   MODULE_NAME   — if set, scope injection to files belonging to this module only
  */
 
 const fs = require('fs');
@@ -29,6 +30,7 @@ const CLAUDE_DIR = path.join(ROOT, '.claude');
 const GITHUB_REPO = process.env.GITHUB_REPO || 'unknown/unknown';
 const CORE_REPO = process.env.CORE_REPO || 'theonekit-core';
 const MODULES_FILE = process.env.MODULES_FILE || '';
+const MODULE_NAME = process.env.MODULE_NAME || '';  // if set, scope injection to this module only
 const KIT_NAME = GITHUB_REPO.split('/').pop(); // e.g. "theonekit-unity"
 
 if (!fs.existsSync(CLAUDE_DIR)) {
@@ -243,6 +245,45 @@ function injectCommentMetadata(filePath, commentPrefix) {
   commentCount++;
 }
 
+/**
+ * When MODULE_NAME is set, determine if a file belongs to that module.
+ * Matches:
+ *   - Files under modules/{MODULE_NAME}/ (pre-flatten layout)
+ *   - Skills under skills/{skillName}/ where skillName maps to MODULE_NAME
+ *   - Activation fragment / routing overlay paths referenced by the module
+ *
+ * Returns true if the file should be processed, false to skip.
+ * When MODULE_NAME is not set, always returns true (process all files).
+ */
+function isInTargetModule(filePath) {
+  if (!MODULE_NAME) return true;
+
+  const rel = path.relative(CLAUDE_DIR, filePath);
+
+  // Pre-flatten layout: modules/{MODULE_NAME}/...
+  if (rel.startsWith(`modules/${MODULE_NAME}/`) || rel === `modules/${MODULE_NAME}`) {
+    return true;
+  }
+
+  // Post-flatten layout: skill in skills/ that belongs to MODULE_NAME
+  const skillMatch = rel.match(/^skills\/([^/]+)\//);
+  if (skillMatch) {
+    return SKILL_MODULE_MAP.get(skillMatch[1]) === MODULE_NAME;
+  }
+
+  // Activation fragment or routing overlay: check against module entry in registry
+  if (SKILL_MODULE_MAP.size > 0) {
+    // Reload registry to check fragment/overlay paths for the target module
+    // (SKILL_MODULE_MAP is already built from the same registry file)
+    // We rely on naming convention: t1k-activation-{module}.json or t1k-routing-{kit}-{module}.json
+    const basename = path.basename(filePath);
+    const moduleSlug = MODULE_NAME.replace(/[^a-z0-9]/gi, '-');
+    if (basename.includes(moduleSlug)) return true;
+  }
+
+  return false;
+}
+
 /** File extension → comment prefix mapping */
 const COMMENT_EXTENSIONS = {
   '.cjs': '//',
@@ -278,6 +319,9 @@ function walkDir(dir) {
       if (['node_modules', '.git', 'dist', '__pycache__', '.venv'].includes(entry.name)) continue;
       walkDir(fullPath);
     } else if (entry.isFile()) {
+      // When MODULE_NAME is set, skip files that don't belong to the target module
+      if (!isInTargetModule(fullPath)) continue;
+
       const ext = path.extname(entry.name).toLowerCase();
 
       if (ext === '.md') {
@@ -294,6 +338,9 @@ function walkDir(dir) {
 
 // Run
 console.log(`[origin] Injecting metadata for kit: ${KIT_NAME}`);
+if (MODULE_NAME) {
+  console.log(`[origin] Scoped injection — target module: ${MODULE_NAME}`);
+}
 if (SKILL_MODULE_MAP.size > 0) {
   console.log(`[origin] Module-aware injection enabled (${SKILL_MODULE_MAP.size} skill mappings loaded)`);
 } else {

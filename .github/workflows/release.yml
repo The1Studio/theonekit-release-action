@@ -25,6 +25,11 @@ on:
         required: false
         type: string
         default: 't1k-modules.json'
+      release-mode:
+        description: 'Release mode: "semantic" (single ZIP via semantic-release) or "modules" (per-module ZIPs)'
+        required: false
+        type: string
+        default: 'semantic'
       discord-thread-id:
         description: 'Discord thread ID for notifications (optional — skip Discord if empty)'
         required: false
@@ -74,7 +79,7 @@ jobs:
         run: |
           mkdir -p .release-scripts
           # Use GitHub API to avoid raw.githubusercontent.com caching
-          for script in prepare-release-assets.cjs send-discord-release.cjs validate-modules.cjs generate-module-keywords.cjs flatten-module-files.cjs inject-origin-metadata.cjs generate-module-docs.cjs; do
+          for script in prepare-release-assets.cjs send-discord-release.cjs validate-modules.cjs generate-module-keywords.cjs flatten-module-files.cjs inject-origin-metadata.cjs generate-module-docs.cjs release-modules.cjs release-modules-helpers.cjs parse-commits.cjs compute-version-bump.cjs build-module-zip.cjs build-release-manifest.cjs generate-module-manifest.cjs create-github-release.cjs; do
             curl -sL -H "Authorization: token ${{ github.token }}" \
               -H "Accept: application/vnd.github.v3.raw" \
               "https://api.github.com/repos/The1Studio/theonekit-release-action/contents/scripts/$script?ref=main" \
@@ -115,7 +120,19 @@ jobs:
           MODULES_FILE: ${{ inputs.modular && inputs.modules-file || '' }}
         run: node .release-scripts/prepare-release-assets.cjs
 
+      - name: Module Release
+        if: inputs.release-mode == 'modules'
+        id: module-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KIT_NAME: ${{ inputs.kit-name }}
+          GITHUB_REPO: ${{ github.repository }}
+        run: |
+          node .release-scripts/release-modules.cjs --kit-dir .
+          echo "new_release=true" >> "$GITHUB_OUTPUT"
+
       - name: Semantic Release
+        if: inputs.release-mode != 'modules'
         id: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -127,7 +144,6 @@ jobs:
             echo "new_release=true" >> "$GITHUB_OUTPUT"
           else
             echo "new_release=false" >> "$GITHUB_OUTPUT"
-            # Only fail on actual fatal errors, not "no release needed"
             if echo "$output" | grep -q "ELIFECYCLE"; then
               echo "::error::Semantic release failed with fatal error"
               exit 1
@@ -135,7 +151,7 @@ jobs:
           fi
 
       - name: Notify Discord
-        if: steps.release.outputs.new_release == 'true' && inputs.discord-thread-id != ''
+        if: (steps.release.outputs.new_release == 'true' || steps.module-release.outputs.new_release == 'true') && inputs.discord-thread-id != ''
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.discord-webhook-url }}
           DISCORD_THREAD_ID: ${{ inputs.discord-thread-id }}

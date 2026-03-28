@@ -99,6 +99,7 @@ jobs:
         run: node .release-scripts/generate-module-keywords.cjs
 
       - name: Inject origin metadata
+        if: inputs.release-mode != 'modules'
         env:
           GITHUB_REPO: ${{ github.repository }}
           CORE_REPO: 'theonekit-core'
@@ -106,12 +107,13 @@ jobs:
         run: node .release-scripts/inject-origin-metadata.cjs
 
       - name: Generate module documentation
-        if: inputs.modular == true
+        if: inputs.modular == true && inputs.release-mode != 'modules'
         env:
           MODULES_FILE: ${{ inputs.modules-file }}
         run: node .release-scripts/generate-module-docs.cjs
 
       - name: Prepare release assets
+        if: inputs.release-mode != 'modules'
         env:
           KIT_NAME: ${{ inputs.kit-name }}
           ZIP_NAME: ${{ inputs.zip-name }}
@@ -119,6 +121,15 @@ jobs:
           GITHUB_REPO: ${{ github.repository }}
           MODULES_FILE: ${{ inputs.modular && inputs.modules-file || '' }}
         run: node .release-scripts/prepare-release-assets.cjs
+
+      - name: Install gh CLI
+        if: inputs.release-mode == 'modules'
+        run: |
+          if ! command -v gh &>/dev/null; then
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+            sudo apt-get update -qq && sudo apt-get install -y -qq gh
+          fi
 
       - name: Module Release
         if: inputs.release-mode == 'modules'

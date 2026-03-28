@@ -65,9 +65,12 @@ function copyDir(src, dstBase, relPrefix, collected) {
 function stageModuleFiles(moduleName, moduleEntry, moduleSourceDir, stagingClaudeDir) {
   const claudeRelPaths = [];
 
-  // --- Skills ---
+  // --- Skills (check module dir first, then flat .claude/skills/) ---
+  const kitClaudeDir = path.resolve(moduleSourceDir, '..');
   for (const skillName of (moduleEntry.skills || [])) {
-    const src = path.join(moduleSourceDir, 'skills', skillName);
+    // Priority: modules/{name}/skills/ > .claude/skills/ (flat)
+    let src = path.join(moduleSourceDir, 'skills', skillName);
+    if (!fs.existsSync(src)) src = path.join(kitClaudeDir, 'skills', skillName);
     const dstBase = path.join(stagingClaudeDir, 'skills', skillName);
     const collected = [];
     copyDir(src, dstBase, '', collected);
@@ -81,9 +84,10 @@ function stageModuleFiles(moduleName, moduleEntry, moduleSourceDir, stagingClaud
     }
   }
 
-  // --- Agents ---
+  // --- Agents (check module dir first, then flat .claude/agents/) ---
   for (const agentFile of (moduleEntry.agents || [])) {
-    const src = path.join(moduleSourceDir, 'agents', agentFile);
+    let src = path.join(moduleSourceDir, 'agents', agentFile);
+    if (!fs.existsSync(src)) src = path.join(kitClaudeDir, 'agents', agentFile);
     if (!fs.existsSync(src)) {
       console.warn(`  [stage] warn: agents/${agentFile} not found`);
       continue;
@@ -94,9 +98,10 @@ function stageModuleFiles(moduleName, moduleEntry, moduleSourceDir, stagingClaud
     console.log(`  [stage] agents/${agentFile}`);
   }
 
-  // --- Activation fragment ---
+  // --- Activation fragment (check module dir first, then .claude/) ---
   if (moduleEntry.activationFragment) {
-    const src = path.join(moduleSourceDir, moduleEntry.activationFragment);
+    let src = path.join(moduleSourceDir, moduleEntry.activationFragment);
+    if (!fs.existsSync(src)) src = path.join(kitClaudeDir, moduleEntry.activationFragment);
     if (fs.existsSync(src)) {
       const dst = path.join(stagingClaudeDir, moduleEntry.activationFragment);
       copyFile(src, dst);
@@ -105,9 +110,10 @@ function stageModuleFiles(moduleName, moduleEntry, moduleSourceDir, stagingClaud
     }
   }
 
-  // --- Routing overlay ---
+  // --- Routing overlay (check module dir first, then .claude/) ---
   if (moduleEntry.routingOverlay) {
-    const src = path.join(moduleSourceDir, moduleEntry.routingOverlay);
+    let src = path.join(moduleSourceDir, moduleEntry.routingOverlay);
+    if (!fs.existsSync(src)) src = path.join(kitClaudeDir, moduleEntry.routingOverlay);
     if (fs.existsSync(src)) {
       const dst = path.join(stagingClaudeDir, moduleEntry.routingOverlay);
       copyFile(src, dst);

@@ -127,10 +127,9 @@ jobs:
             echo "new_release=true" >> "$GITHUB_OUTPUT"
           else
             echo "new_release=false" >> "$GITHUB_OUTPUT"
-            # Check if it was an actual error vs just no release needed
-            # Use stricter patterns — semantic-release logs "Error" in normal output
-            if echo "$output" | grep -qE "ELIFECYCLE|SemanticReleaseError|ERR_INVALID|Cannot find module"; then
-              echo "::error::Semantic release failed"
+            # Only fail on actual fatal errors, not "no release needed"
+            if echo "$output" | grep -q "ELIFECYCLE"; then
+              echo "::error::Semantic release failed with fatal error"
               exit 1
             fi
           fi

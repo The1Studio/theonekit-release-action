@@ -284,8 +284,18 @@ async function main() {
   const manifestPath = path.join(outputDir, 'manifest.json');
   buildReleaseManifest({ kitName, kitRepo, releaseTag, kitDir: KIT_DIR, outputPath: manifestPath, dryRun });
 
+  // Step 5b: Collect extra release assets (keyword file, etc.)
+  const extraAssets = [];
+  const keywordFile = path.join(CLAUDE_DIR, `t1k-modules-keywords-${kitName}.json`);
+  if (fs.existsSync(keywordFile)) {
+    const dst = path.join(outputDir, path.basename(keywordFile));
+    if (!dryRun) fs.copyFileSync(keywordFile, dst);
+    extraAssets.push(dst);
+    console.log(`[release] Including keyword file: ${path.basename(keywordFile)}`);
+  }
+
   // Step 6: Create GitHub Release + per-module tags
-  createGithubRelease({ releaseTag, kitName: kitDisplayName, kitRepo, kitDir: KIT_DIR, manifestPath, moduleAssets, dryRun });
+  createGithubRelease({ releaseTag, kitName: kitDisplayName, kitRepo, kitDir: KIT_DIR, manifestPath, moduleAssets, extraAssets, dryRun });
 
   // Step 7: Commit version bumps
   commitVersionBumps(KIT_DIR, bumpedModules, dryRun);

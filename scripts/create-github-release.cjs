@@ -12,6 +12,7 @@
  * @param {string}   opts.kitDir        Absolute path to kit repo root (for git ops)
  * @param {string}   opts.manifestPath  Absolute path to manifest.json asset
  * @param {Array<{name: string, version: string, zipPath: string}>} opts.moduleAssets
+ * @param {string[]} [opts.extraAssets=[]]  Additional file paths to include as release assets
  * @param {boolean}  [opts.dryRun=false]
  */
 
@@ -82,7 +83,7 @@ function buildReleaseNotes(kitName, releaseTag, moduleAssets, manifestSummary) {
 /**
  * Create the GitHub Release with all assets attached.
  */
-function createGithubRelease({ releaseTag, kitName, kitRepo, kitDir, manifestPath, moduleAssets, dryRun = false }) {
+function createGithubRelease({ releaseTag, kitName, kitRepo, kitDir, manifestPath, moduleAssets, extraAssets = [], dryRun = false }) {
   console.log(`\n[release] Creating GitHub Release: ${releaseTag}`);
 
   // Validate all ZIP assets exist
@@ -113,9 +114,12 @@ function createGithubRelease({ releaseTag, kitName, kitRepo, kitDir, manifestPat
   }
 
   // Build gh release create command
-  const assetArgs = [manifestPath, ...moduleAssets.filter(a => a.zipPath).map(a => a.zipPath)]
-    .map(p => `"${p}"`)
-    .join(' ');
+  const allAssetPaths = [
+    manifestPath,
+    ...moduleAssets.filter(a => a.zipPath).map(a => a.zipPath),
+    ...extraAssets.filter(p => fs.existsSync(p)),
+  ];
+  const assetArgs = allAssetPaths.map(p => `"${p}"`).join(' ');
 
   const notesFile = path.join(path.dirname(manifestPath), '_release-notes.tmp.md');
   fs.writeFileSync(notesFile, notes);

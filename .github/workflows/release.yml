@@ -79,7 +79,7 @@ jobs:
         run: |
           mkdir -p .release-scripts
           # Use GitHub API to avoid raw.githubusercontent.com caching
-          for script in prepare-release-assets.cjs send-discord-release.cjs validate-modules.cjs generate-module-keywords.cjs flatten-module-files.cjs inject-origin-metadata.cjs generate-module-docs.cjs release-modules.cjs release-modules-helpers.cjs parse-commits.cjs compute-version-bump.cjs build-module-zip.cjs build-release-manifest.cjs generate-module-manifest.cjs create-github-release.cjs; do
+          for script in prepare-release-assets.cjs send-discord-release.cjs validate-modules.cjs generate-module-keywords.cjs flatten-module-files.cjs inject-origin-metadata.cjs generate-module-docs.cjs release-modules.cjs release-modules-helpers.cjs parse-commits.cjs compute-version-bump.cjs build-module-zip.cjs build-release-manifest.cjs generate-module-manifest.cjs create-github-release.cjs auto-prefix-agents.cjs validate-no-collisions.cjs; do
             curl -sL -H "Authorization: token ${{ github.token }}" \
               -H "Accept: application/vnd.github.v3.raw" \
               "https://api.github.com/repos/The1Studio/theonekit-release-action/contents/scripts/$script?ref=main" \
@@ -105,6 +105,17 @@ jobs:
           CORE_REPO: 'theonekit-core'
           MODULES_FILE: ${{ inputs.modular && inputs.modules-file || '' }}
         run: node .release-scripts/inject-origin-metadata.cjs
+
+      - name: Commit metadata back to git
+        if: inputs.release-mode != 'modules'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A .claude/
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(ci): update metadata [skip ci]"
+            git push origin HEAD || (git pull --rebase origin HEAD && git push origin HEAD)
+          fi
 
       - name: Generate module documentation
         if: inputs.modular == true && inputs.release-mode != 'modules'

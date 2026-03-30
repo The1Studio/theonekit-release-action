@@ -98,4 +98,66 @@ function commitVersionBumps(kitDir, bumpedModules, dryRun) {
   console.log(`[release] Committed and pushed version bumps: ${bumpedModules.join(', ')}`);
 }
 
-module.exports = { resolveKitRepo, readModulesRegistry, listModuleNames, buildReleaseTag, commitVersionBumps };
+/**
+ * Commit all .claude/ transformations (metadata injection, agent prefixes, version bumps,
+ * synced registries) in one unified commit, then push with retry.
+ *
+ * Retries up to 3 times on push failure by rebasing and retrying.
+ * No-op (no error) if there are no staged changes.
+ *
+ * @param {string}  kitDir
+ * @param {boolean} dryRun
+ */
+function commitTransformations(kitDir, dryRun) {
+  if (dryRun) {
+    console.log('[release] dry-run: would commit metadata, prefixes, and versions');
+    return;
+  }
+
+  // Stage all .claude/ changes and module.json files
+  run('git add .claude/', kitDir);
+  // Also stage any module.json files that were version-bumped
+  try { run('git add ".claude/modules/**/module.json"', kitDir); } catch { /* glob may find nothing */ }
+
+  // Check if there is anything to commit
+  let hasStagedChanges = false;
+  try {
+    run('git diff --cached --quiet', kitDir);
+  } catch {
+    hasStagedChanges = true;
+  }
+
+  if (!hasStagedChanges) {
+    console.log('[release] No changes to commit — working tree already up to date');
+    return;
+  }
+
+  const msg = 'chore(ci): update metadata, prefixes, and versions [skip ci]';
+  run(`git commit -m "${msg}"`, kitDir);
+  console.log('[release] Committed transformations');
+
+  // Push with retry (up to 3 attempts, rebase on conflict)
+  const MAX_RETRIES = 3;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      run('git push origin HEAD', kitDir);
+      console.log('[release] Pushed transformation commit to origin');
+      return;
+    } catch (pushErr) {
+      if (attempt === MAX_RETRIES) {
+        throw new Error(`[release] Push failed after ${MAX_RETRIES} attempts: ${pushErr.message}`);
+      }
+      console.warn(`[release] Push attempt ${attempt} failed — rebasing and retrying...`);
+      run('git pull --rebase origin HEAD', kitDir);
+    }
+  }
+}
+
+module.exports = {
+  resolveKitRepo,
+  readModulesRegistry,
+  listModuleNames,
+  buildReleaseTag,
+  commitVersionBumps,
+  commitTransformations,
+};

@@ -3,13 +3,17 @@
  * Orchestrator for per-module releases. Replaces semantic-release for modular kits.
  *
  * Steps:
- *   1. Discover modules + read t1k-modules.json registry
- *   2. Parse conventional commits since last release tag
- *   3. Compute per-module semver bumps, write updated module.json files
- *   4. Build per-module ZIPs for ALL modules (rolling release strategy)
- *   5. Build release manifest.json
- *   6. Create GitHub Release with all assets + per-module tags
- *   7. Commit bumped module.json files back to repo
+ *   1.  Discover modules + read t1k-modules.json registry
+ *   1b. Sync t1k-modules.json and activation fragments from module.json (SSOT)
+ *   2.  Parse conventional commits since last release tag
+ *   3.  Compute per-module semver bumps, write updated module.json files
+ *   3b. Inject origin metadata into repo .claude/ (commit-back pipeline)
+ *   3c. Auto-prefix agents for cross-kit uniqueness
+ *   3d. Validate no collisions within this kit
+ *   3e. Commit all transformations (metadata + prefixes + versions) to git
+ *   4.  Build per-module ZIPs from transformed git state
+ *   5.  Build release manifest.json
+ *   6.  Create GitHub Release with all assets + per-module tags
  *
  * Usage:
  *   node release-modules.cjs --kit-dir /path/to/kit-repo [--dry-run]
@@ -37,7 +41,26 @@ const {
   listModuleNames,
   buildReleaseTag,
   commitVersionBumps,
+  commitTransformations,
 } = require('./release-modules-helpers.cjs');
+
+const { execSync } = require('child_process');
+
+const INJECT_SCRIPT    = path.join(__dirname, 'inject-origin-metadata.cjs');
+const PREFIX_SCRIPT    = path.join(__dirname, 'auto-prefix-agents.cjs');
+const VALIDATE_SCRIPT  = path.join(__dirname, 'validate-no-collisions.cjs');
+
+/**
+ * Run a script via node, inheriting stdio, with the given env overrides.
+ * Throws on non-zero exit.
+ */
+function runScript(scriptPath, cwd, envOverrides = {}) {
+  execSync(`node "${scriptPath}"`, {
+    cwd,
+    env: { ...process.env, ...envOverrides },
+    stdio: 'inherit',
+  });
+}
 
 // ── SSOT sync helpers ─────────────────────────────────────────────────────────
 
@@ -271,13 +294,59 @@ async function main() {
   const { moduleVersions, bumpedModules } =
     applyVersionBumps(moduleNames, syncedRegistry, affectedModules, breakingAll);
 
-  // Step 4: Build ZIPs
+  // Step 3b: Inject origin metadata into .claude/ in-repo (not just ZIPs)
+  console.log('\n[release] Step 3b: Inject origin metadata into repo .claude/');
+  if (!dryRun) {
+    const modulesFile = path.join(CLAUDE_DIR, 't1k-modules.json');
+    runScript(INJECT_SCRIPT, KIT_DIR, {
+      GITHUB_REPO:  kitRepo,
+      CORE_REPO:    process.env.CORE_REPO || 'theonekit-core',
+      MODULES_FILE: fs.existsSync(modulesFile) ? modulesFile : '',
+    });
+  } else {
+    console.log('[release] dry-run: would inject origin metadata into .claude/');
+  }
+
+  // Step 3c: Auto-prefix agents for uniqueness
+  console.log('\n[release] Step 3c: Auto-prefix agents');
+  if (!dryRun) {
+    const modulesFile = path.join(CLAUDE_DIR, 't1k-modules.json');
+    runScript(PREFIX_SCRIPT, KIT_DIR, {
+      GITHUB_REPO:   kitRepo,
+      CORE_REPO:     process.env.CORE_REPO || 'theonekit-core',
+      MODULES_FILE:  fs.existsSync(modulesFile) ? modulesFile : '',
+    });
+  } else {
+    console.log('[release] dry-run: would auto-prefix agents in .claude/agents/');
+  }
+
+  // Step 3d: Validate — no collisions within this kit
+  console.log('\n[release] Step 3d: Validate no collisions');
+  if (!dryRun) {
+    const modulesFile = path.join(CLAUDE_DIR, 't1k-modules.json');
+    runScript(VALIDATE_SCRIPT, KIT_DIR, {
+      GITHUB_REPO:  kitRepo,
+      CORE_REPO:    process.env.CORE_REPO || 'theonekit-core',
+      MODULES_FILE: fs.existsSync(modulesFile) ? modulesFile : '',
+    });
+  } else {
+    console.log('[release] dry-run: would run validate-no-collisions');
+  }
+
+  // Step 3e: Commit all transformations (metadata + prefixes + versions + synced files)
+  console.log('\n[release] Step 3e: Commit all transformations to git');
+  commitTransformations(KIT_DIR, dryRun);
+
+  // Step 4: Build ZIPs from current (transformed) git state
   const outputDir = dryRun
     ? path.join(os.tmpdir(), `t1k-release-dry-${Date.now()}`)
     : path.join(KIT_DIR, 'dist', 'modules');
   fs.mkdirSync(outputDir, { recursive: true });
 
-  const moduleAssets = buildAllZips(moduleNames, syncedRegistry, moduleVersions, kitName, kitRepo, outputDir);
+  // Reload registry after transformations (agent renames may have updated t1k-modules.json)
+  const finalRegistry = dryRun ? syncedRegistry : readModulesRegistry(CLAUDE_DIR);
+
+  const moduleAssets = buildAllZips(moduleNames, finalRegistry, moduleVersions, kitName, kitRepo, outputDir);
 
   // Step 5: Build release manifest.json
   const releaseTag   = buildReleaseTag();
@@ -296,9 +365,6 @@ async function main() {
 
   // Step 6: Create GitHub Release + per-module tags
   createGithubRelease({ releaseTag, kitName: kitDisplayName, kitRepo, kitDir: KIT_DIR, manifestPath, moduleAssets, extraAssets, dryRun });
-
-  // Step 7: Commit version bumps
-  commitVersionBumps(KIT_DIR, bumpedModules, dryRun);
 
   console.log(`\n${'='.repeat(60)}`);
   console.log(`[release] Done — ${moduleAssets.length} module(s) released as ${releaseTag}`);

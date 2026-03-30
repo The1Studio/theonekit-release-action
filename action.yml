@@ -73,6 +73,19 @@ runs:
       working-directory: ${{ github.workspace }}
       run: node ${{ github.action_path }}/scripts/inject-origin-metadata.cjs
 
+    - name: Commit metadata back to git
+      if: inputs.release-mode != 'modules'
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        git config user.name  "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add -A .claude/
+        if ! git diff --cached --quiet; then
+          git commit -m "chore(ci): update metadata [skip ci]"
+          git push origin HEAD || (git pull --rebase origin HEAD && git push origin HEAD)
+        fi
+
     - name: Prepare release assets
       shell: bash
       env:

@@ -1,6 +1,10 @@
 /**
  * build-module-zip.cjs
- * Build a per-module ZIP: flatten files, inject origin metadata, generate manifest, zip.
+ * Build a per-module ZIP: flatten files, generate manifest, zip.
+ *
+ * Origin metadata is NOT injected here — it is injected into the repo by
+ * release-modules.cjs (step 3b) before ZIPs are built, so files are already
+ * transformed when staged into the ZIP.
  *
  * ZIP structure:
  *   .claude/
@@ -28,8 +32,6 @@ const fs   = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const { generateManifestFromList, writeManifest } = require('./generate-module-manifest.cjs');
-
-const INJECT_SCRIPT = path.join(__dirname, 'inject-origin-metadata.cjs');
 
 /**
  * Copy src -> dst, creating parent dirs as needed.
@@ -126,22 +128,6 @@ function stageModuleFiles(moduleName, moduleEntry, moduleSourceDir, stagingClaud
 }
 
 /**
- * Run inject-origin-metadata.cjs on the staging .claude/ dir.
- */
-function injectOrigin(stagingDir, kitRepo, moduleName, modulesFile) {
-  const env = {
-    ...process.env,
-    GITHUB_REPO: kitRepo,
-    MODULES_FILE: modulesFile || '',
-  };
-  execSync(`node "${INJECT_SCRIPT}"`, {
-    cwd: stagingDir,
-    env,
-    stdio: 'inherit',
-  });
-}
-
-/**
  * Create a ZIP from the staging dir using the system zip command.
  * zipPath is the output file (absolute).
  */
@@ -173,12 +159,8 @@ function buildModuleZip({ moduleName, version, kitName, kitRepo, moduleEntry, ki
   fs.mkdirSync(stagingClaudeDir, { recursive: true });
 
   try {
-    // Stage files
+    // Stage files (origin metadata already injected into repo by release-modules.cjs step 3b)
     const stagedPaths = stageModuleFiles(moduleName, moduleEntry, moduleSourceDir, stagingClaudeDir);
-
-    // Inject origin metadata
-    const modulesFile = path.join(kitDir, '.claude', 't1k-modules.json');
-    injectOrigin(stagingDir, kitRepo, moduleName, fs.existsSync(modulesFile) ? modulesFile : '');
 
     // Generate manifest
     const manifest = generateManifestFromList({ moduleName, version, kitName, files: stagedPaths });

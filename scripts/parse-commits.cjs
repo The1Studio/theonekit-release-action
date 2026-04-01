@@ -92,6 +92,12 @@ function getAffectedModules(commit, moduleNames, kitName) {
     return moduleNames;
   }
 
+  // Unscoped feat/fix/refactor/perf commits are kit-wide changes — affect ALL modules
+  // This ensures `fix: add effort field` bumps versions instead of being silently dropped
+  if (!scope && ['feat', 'fix', 'refactor', 'perf'].includes(commit.type)) {
+    return moduleNames;
+  }
+
   return [];
 }
 

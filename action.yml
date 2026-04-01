@@ -125,9 +125,19 @@ runs:
         KIT_NAME: ${{ inputs.kit-name }}
       working-directory: ${{ github.workspace }}
       run: |
+        set +e
         node ${{ github.action_path }}/scripts/release-modules.cjs \
-          --kit-dir "${{ github.workspace }}"
-        echo "new_release=true" >> "$GITHUB_OUTPUT"
+          --kit-dir "${{ github.workspace }}" 2>&1 | tee /tmp/mr-output.txt
+        MR_EXIT=$?
+        set -e
+        # Only signal new_release if the script actually created a release (exit 0)
+        # and didn't exit early with "No releasable commits"
+        if [ $MR_EXIT -eq 0 ] && ! grep -q "No releasable commits" /tmp/mr-output.txt; then
+          echo "new_release=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "new_release=false" >> "$GITHUB_OUTPUT"
+          echo "[release] No new release created — skipping Discord notification"
+        fi
 
     - name: Notify Discord
       if: >

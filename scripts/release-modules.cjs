@@ -363,8 +363,8 @@ async function main() {
     console.log(`[release] Including keyword file: ${path.basename(keywordFile)}`);
   }
 
-  // Step 6: Create GitHub Release + per-module tags
-  createGithubRelease({ releaseTag, kitName: kitDisplayName, kitRepo, kitDir: KIT_DIR, manifestPath, moduleAssets, extraAssets, dryRun });
+  // Step 6: Create GitHub Release + per-module tags (with per-module changelogs)
+  createGithubRelease({ releaseTag, kitName: kitDisplayName, kitRepo, kitDir: KIT_DIR, manifestPath, moduleAssets, affectedModules, extraAssets, dryRun });
 
   console.log(`\n${'='.repeat(60)}`);
   console.log(`[release] Done — ${moduleAssets.length} module(s) released as ${releaseTag}`);

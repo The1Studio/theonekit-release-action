@@ -12,6 +12,7 @@
  * @param {string}   opts.kitDir        Absolute path to kit repo root (for git ops)
  * @param {string}   opts.manifestPath  Absolute path to manifest.json asset
  * @param {Array<{name: string, version: string, zipPath: string}>} opts.moduleAssets
+ * @param {Map<string,Array<{type:string, scope:string|null, breaking:boolean, hash:string, subject:string}>>} [opts.affectedModules]  Per-module commits for changelog
  * @param {string[]} [opts.extraAssets=[]]  Additional file paths to include as release assets
  * @param {boolean}  [opts.dryRun=false]
  */
@@ -59,9 +60,18 @@ function createAndPushTag(kitDir, tag, dryRun) {
 }
 
 /**
- * Build the release notes body listing changed modules.
+ * Format a commit subject for display, stripping the conventional commit prefix.
+ * "feat(dots-core): add new system" → "add new system"
  */
-function buildReleaseNotes(kitName, releaseTag, moduleAssets, manifestSummary) {
+function formatCommitSubject(subject) {
+  const match = subject.match(/^[a-z]+(?:\([^)]+\))?!?\s*:\s*(.+)$/);
+  return match ? match[1] : subject;
+}
+
+/**
+ * Build the release notes body listing changed modules with per-module changelogs.
+ */
+function buildReleaseNotes(kitName, releaseTag, moduleAssets, manifestSummary, affectedModules) {
   const date = releaseTag.replace('modules-', '').replace(/-(\d{4})$/, ' $1').replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
   const lines = [
     `## ${kitName} — ${date}`,
@@ -73,7 +83,39 @@ function buildReleaseNotes(kitName, releaseTag, moduleAssets, manifestSummary) {
     const isRequired = manifestSummary?.modules?.[name]?.required ? ' _(required)_' : '';
     lines.push(`- **${name}** \`${version}\`${isRequired}`);
   }
-  lines.push('', '### Assets', '', '- `manifest.json` — module index with versions and dependency ranges');
+
+  // Per-module changelogs
+  if (affectedModules && affectedModules.size > 0) {
+    lines.push('', '### Changelog', '');
+    for (const { name } of moduleAssets) {
+      const commits = affectedModules.get(name);
+      if (!commits || commits.length === 0) continue;
+
+      lines.push(`#### ${name}`);
+      // Group by type
+      const grouped = {};
+      for (const c of commits) {
+        const label = c.breaking ? 'Breaking Changes'
+          : c.type === 'feat' ? 'Features'
+          : c.type === 'fix' ? 'Bug Fixes'
+          : c.type === 'refactor' ? 'Refactors'
+          : c.type === 'perf' ? 'Performance'
+          : 'Other';
+        if (!grouped[label]) grouped[label] = [];
+        grouped[label].push(c);
+      }
+      for (const [label, items] of Object.entries(grouped)) {
+        lines.push(`- **${label}:**`);
+        for (const c of items) {
+          const short = c.hash.substring(0, 7);
+          lines.push(`  - ${formatCommitSubject(c.subject)} (${short})`);
+        }
+      }
+      lines.push('');
+    }
+  }
+
+  lines.push('### Assets', '', '- `manifest.json` — module index with versions and dependency ranges');
   for (const { name, version } of moduleAssets) {
     lines.push(`- \`${name}-${version}.zip\``);
   }
@@ -83,7 +125,7 @@ function buildReleaseNotes(kitName, releaseTag, moduleAssets, manifestSummary) {
 /**
  * Create the GitHub Release with all assets attached.
  */
-function createGithubRelease({ releaseTag, kitName, kitRepo, kitDir, manifestPath, moduleAssets, extraAssets = [], dryRun = false }) {
+function createGithubRelease({ releaseTag, kitName, kitRepo, kitDir, manifestPath, moduleAssets, affectedModules, extraAssets = [], dryRun = false }) {
   console.log(`\n[release] Creating GitHub Release: ${releaseTag}`);
 
   // Validate all ZIP assets exist
@@ -100,7 +142,7 @@ function createGithubRelease({ releaseTag, kitName, kitRepo, kitDir, manifestPat
     try { manifestSummary = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch { /* ok */ }
   }
 
-  const notes = buildReleaseNotes(kitName, releaseTag, moduleAssets, manifestSummary);
+  const notes = buildReleaseNotes(kitName, releaseTag, moduleAssets, manifestSummary, affectedModules);
   const title = `${kitName} Modules — ${releaseTag}`;
 
   if (dryRun) {

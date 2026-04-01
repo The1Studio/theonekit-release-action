@@ -149,5 +149,6 @@ runs:
         DISCORD_THREAD_ID: ${{ inputs.discord-thread-id }}
         KIT_NAME: ${{ inputs.kit-name }}
         GITHUB_REPO: ${{ github.repository }}
+        RELEASE_MODE: ${{ inputs.release-mode }}
       working-directory: ${{ github.workspace }}
       run: node ${{ github.action_path }}/scripts/send-discord-release.cjs

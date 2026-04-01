@@ -18,6 +18,7 @@ const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
 const threadId = process.env.DISCORD_THREAD_ID;
 const KIT_NAME = process.env.KIT_NAME || 'TheOneKit';
 const GITHUB_REPO = process.env.GITHUB_REPO;
+const RELEASE_MODE = process.env.RELEASE_MODE || 'semantic';
 
 if (!webhookUrl) {
   console.error('[X] DISCORD_WEBHOOK_URL env var not set');
@@ -70,6 +71,74 @@ function extractLatestRelease() {
   }
 
   return { version, date, sections };
+}
+
+/**
+ * Extract module release info from the latest GitHub release (for module mode).
+ * Reads the release body created by release-modules.cjs via `gh` CLI.
+ */
+function extractModuleRelease() {
+  const { execSync } = require('child_process');
+  const date = new Date().toISOString().split('T')[0];
+
+  try {
+    const raw = execSync(
+      `gh release view --repo "${GITHUB_REPO}" --json tagName,body --jq '\\(.tagName)\\n\\(.body)'`,
+      { encoding: 'utf8', timeout: 15000 }
+    ).trim();
+
+    const firstNewline = raw.indexOf('\n');
+    const tagName = raw.substring(0, firstNewline);
+    const body = raw.substring(firstNewline + 1);
+
+    // Parse module versions from body: "- **module-name** `1.2.3`" or "- **module-name** `1.2.3` _(required)_"
+    const modules = [];
+    for (const line of body.split('\n')) {
+      const m = line.match(/^\s*-\s+\*\*(.+?)\*\*\s+`(\d+\.\d+\.\d+)`/);
+      if (m) modules.push({ name: m[1], version: m[2] });
+    }
+
+    return { tagName, date, modules };
+  } catch (err) {
+    console.warn(`[!] Could not fetch GitHub release: ${err.message}`);
+    return { tagName: 'unknown', date, modules: [] };
+  }
+}
+
+/**
+ * Create Discord embed for module releases — shows per-module version bumps.
+ */
+function createModuleEmbed(release) {
+  const color = 0x10b981;
+  const title = `📦 ${KIT_NAME} — Module Release`;
+  const url = `https://github.com/${GITHUB_REPO}/releases/tag/${release.tagName}`;
+
+  const moduleList = release.modules
+    .map((m) => `\`${m.name}\` → **v${m.version}**`)
+    .join('\n');
+
+  const description = [
+    `📅 Released on ${release.date} • **${release.modules.length} module${release.modules.length !== 1 ? 's' : ''}**`,
+    '',
+    '```',
+    'git pull origin main  # update',
+    '```',
+  ].join('\n');
+
+  const fields = [];
+  if (moduleList) {
+    fields.push({ name: '📦 Module Versions', value: moduleList, inline: false });
+  }
+
+  return {
+    title,
+    description,
+    url,
+    color,
+    timestamp: new Date().toISOString(),
+    footer: { text: `${KIT_NAME} • ${release.modules.length} modules` },
+    fields: fields.slice(0, 25),
+  };
 }
 
 function createEmbed(release) {
@@ -154,11 +223,18 @@ function sendToDiscord(embed) {
 }
 
 try {
-  const release = extractLatestRelease();
-  console.log(`[i] Preparing notification for v${release.version}`);
-  const itemCount = Object.values(release.sections).flat().length;
-  if (itemCount === 0) { console.log('[i] No changelog items — skipping'); process.exit(0); }
-  sendToDiscord(createEmbed(release));
+  if (RELEASE_MODE === 'modules') {
+    const release = extractModuleRelease();
+    console.log(`[i] Preparing module notification for ${release.tagName} (${release.modules.length} modules)`);
+    if (release.modules.length === 0) { console.log('[i] No modules in release — skipping'); process.exit(0); }
+    sendToDiscord(createModuleEmbed(release));
+  } else {
+    const release = extractLatestRelease();
+    console.log(`[i] Preparing notification for v${release.version}`);
+    const itemCount = Object.values(release.sections).flat().length;
+    if (itemCount === 0) { console.log('[i] No changelog items — skipping'); process.exit(0); }
+    sendToDiscord(createEmbed(release));
+  }
 } catch (err) {
   console.error('[X]', err);
   process.exit(1);

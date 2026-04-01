@@ -132,6 +132,10 @@ function commitTransformations(kitDir, dryRun) {
     return;
   }
 
+  // Configure git identity (ARC runners may not have global config)
+  try { run('git config user.name "github-actions[bot]"', kitDir); } catch { /* already set */ }
+  try { run('git config user.email "github-actions[bot]@users.noreply.github.com"', kitDir); } catch { /* already set */ }
+
   const msg = 'chore(ci): update metadata, prefixes, and versions [skip ci]';
   run(`git commit -m "${msg}"`, kitDir);
   console.log('[release] Committed transformations');

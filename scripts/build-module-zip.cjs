@@ -159,6 +159,18 @@ function buildModuleZip({ moduleName, version, kitName, kitRepo, moduleEntry, ki
   fs.mkdirSync(stagingClaudeDir, { recursive: true });
 
   try {
+    // Stage kit-wide shared files (.gitignore, etc.) — needed for consumer project hygiene
+    const kitClaudeDir = path.join(kitDir, '.claude');
+    const sharedFiles = ['.gitignore'];
+    for (const shared of sharedFiles) {
+      const src = path.join(kitClaudeDir, shared);
+      if (fs.existsSync(src)) {
+        const dst = path.join(stagingClaudeDir, shared);
+        copyFile(src, dst);
+        console.log(`  [stage] ${shared} (kit-wide shared)`);
+      }
+    }
+
     // Stage files (origin metadata already injected into repo by release-modules.cjs step 3b)
     const stagedPaths = stageModuleFiles(moduleName, moduleEntry, moduleSourceDir, stagingClaudeDir);
 

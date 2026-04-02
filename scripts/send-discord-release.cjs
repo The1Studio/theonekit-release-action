@@ -93,12 +93,29 @@ function extractModuleRelease() {
 
     // Parse module versions from body: "- **module-name** `1.2.3`" or "- **module-name** `1.2.3` _(required)_"
     const modules = [];
-    for (const line of body.split('\n')) {
+    const bodyLines = body.split('\n');
+    for (const line of bodyLines) {
       const m = line.match(/^\s*-\s+\*\*(.+?)\*\*\s+`(\d+\.\d+\.\d+)`/);
       if (m) modules.push({ name: m[1], version: m[2] });
     }
 
-    return { tagName, date, modules };
+    // Parse per-module changelogs from "### Changelog" section
+    const changelogs = {};
+    let inChangelog = false;
+    let currentModule = null;
+    for (const line of bodyLines) {
+      if (line.startsWith('### Changelog')) { inChangelog = true; continue; }
+      if (inChangelog && line.startsWith('### ')) break; // next top-level section
+      if (!inChangelog) continue;
+
+      const modHeader = line.match(/^#### (.+)/);
+      if (modHeader) { currentModule = modHeader[1]; changelogs[currentModule] = []; continue; }
+      if (currentModule && line.trim()) {
+        changelogs[currentModule].push(line);
+      }
+    }
+
+    return { tagName, date, modules, changelogs };
   } catch (err) {
     console.warn(`[!] Could not fetch GitHub release: ${err.message}`);
     return { tagName: 'unknown', date, modules: [] };
@@ -130,13 +147,28 @@ function createModuleEmbed(release) {
     fields.push({ name: '📦 Module Versions', value: moduleList, inline: false });
   }
 
+  // Add per-module changelogs if available
+  if (release.changelogs) {
+    for (const [modName, lines] of Object.entries(release.changelogs)) {
+      if (lines.length === 0) continue;
+      let value = lines.join('\n');
+      if (value.length > 1024) {
+        const at = value.lastIndexOf('\n', 1000);
+        value = `${value.substring(0, at > 0 ? at : 1000)}\n... *(truncated)*`;
+      }
+      fields.push({ name: `📋 ${modName}`, value, inline: false });
+    }
+  }
+
+  const changeCount = Object.values(release.changelogs || {}).reduce((sum, lines) => sum + lines.length, 0);
+
   return {
     title,
     description,
     url,
     color,
     timestamp: new Date().toISOString(),
-    footer: { text: `${KIT_NAME} • ${release.modules.length} modules` },
+    footer: { text: `${KIT_NAME} • ${release.modules.length} modules • ${changeCount} changes` },
     fields: fields.slice(0, 25),
   };
 }

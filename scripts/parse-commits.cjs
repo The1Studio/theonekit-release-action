@@ -82,9 +82,15 @@ function parseCommitLine(line) {
 function getAffectedModules(commit, moduleNames, kitName) {
   const scope = commit.scope ? commit.scope.toLowerCase() : null;
 
-  // Exact module match
+  // Exact module match (single scope)
   if (scope && moduleNames.includes(scope)) {
     return [scope];
+  }
+
+  // Multi-scope: "dots-core,dots-combat" → match each individually
+  if (scope && scope.includes(',')) {
+    const matched = scope.split(',').map(s => s.trim()).filter(s => moduleNames.includes(s));
+    if (matched.length > 0) return matched;
   }
 
   // Kit-scope or breaking with no scope -> all modules

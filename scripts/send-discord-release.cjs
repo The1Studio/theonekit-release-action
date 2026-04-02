@@ -83,13 +83,13 @@ function extractModuleRelease() {
 
   try {
     const raw = execSync(
-      `gh release view --repo "${GITHUB_REPO}" --json tagName,body --jq '\\(.tagName)\\n\\(.body)'`,
+      `gh release view --repo "${GITHUB_REPO}" --json tagName,body`,
       { encoding: 'utf8', timeout: 15000 }
     ).trim();
 
-    const firstNewline = raw.indexOf('\n');
-    const tagName = raw.substring(0, firstNewline);
-    const body = raw.substring(firstNewline + 1);
+    const release = JSON.parse(raw);
+    const tagName = release.tagName;
+    const body = release.body || '';
 
     // Parse module versions from body: "- **module-name** `1.2.3`" or "- **module-name** `1.2.3` _(required)_"
     const modules = [];

@@ -181,6 +181,7 @@ jobs:
           KIT_NAME: ${{ inputs.kit-name }}
           GITHUB_REPO: ${{ github.repository }}
           RELEASE_MODE: ${{ inputs.release-mode }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node .release-scripts/send-discord-release.cjs
 
       - name: Cleanup

@@ -5,17 +5,17 @@
  *   - readModulesRegistry — parse t1k-modules.json
  *   - listModuleNames — list module dirs from .claude/modules/
  *   - buildReleaseTag — generate rolling tag "modules-YYYYMMDD-HHMM"
- *   - commitVersionBumps — git commit + push updated module.json files
+ *   - commitTransformations — git commit + push all .claude/ changes
  */
 
 'use strict';
 
 const fs   = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
-function run(cmd, cwd) {
-  return execSync(cmd, { cwd, encoding: 'utf8' }).trim();
+function run(prog, args, cwd) {
+  return execFileSync(prog, args, { cwd, encoding: 'utf8', windowsHide: true }).trim();
 }
 
 /**
@@ -28,7 +28,7 @@ function run(cmd, cwd) {
 function resolveKitRepo(kitDir) {
   if (process.env.GITHUB_REPO) return process.env.GITHUB_REPO;
   try {
-    const remote = run('git remote get-url origin', kitDir);
+    const remote = run('git', ['remote', 'get-url', 'origin'], kitDir);
     const m = remote.match(/github\.com[:/](.+?)(?:\.git)?$/);
     if (m) return m[1];
   } catch { /* fall through */ }
@@ -77,28 +77,6 @@ function buildReleaseTag() {
 }
 
 /**
- * Stage and commit updated module.json files, then push to origin HEAD.
- * No-op if bumpedModules is empty.
- *
- * @param {string}   kitDir
- * @param {string[]} bumpedModules  Names of modules whose module.json was updated.
- * @param {boolean}  dryRun
- */
-function commitVersionBumps(kitDir, bumpedModules, dryRun) {
-  if (bumpedModules.length === 0) return;
-  const files = bumpedModules.map(m => `.claude/modules/${m}/module.json`).join(' ');
-  const msg   = `chore(release): bump module versions\n\n${bumpedModules.join(', ')}`;
-  if (dryRun) {
-    console.log(`[release] dry-run: would commit version bumps for: ${bumpedModules.join(', ')}`);
-    return;
-  }
-  run(`git add ${files}`, kitDir);
-  run(`git commit -m "${msg.replace(/"/g, '\\"')}"`, kitDir);
-  run('git push origin HEAD', kitDir);
-  console.log(`[release] Committed and pushed version bumps: ${bumpedModules.join(', ')}`);
-}
-
-/**
  * Commit all .claude/ transformations (metadata injection, agent prefixes, version bumps,
  * synced registries) in one unified commit, then push with retry.
  *
@@ -115,14 +93,14 @@ function commitTransformations(kitDir, dryRun) {
   }
 
   // Stage all .claude/ changes and module.json files
-  run('git add .claude/', kitDir);
+  run('git', ['add', '.claude/'], kitDir);
   // Also stage any module.json files that were version-bumped
-  try { run('git add ".claude/modules/**/module.json"', kitDir); } catch { /* glob may find nothing */ }
+  try { run('git', ['add', '.claude/modules/**/module.json'], kitDir); } catch { /* glob may find nothing */ }
 
   // Check if there is anything to commit
   let hasStagedChanges = false;
   try {
-    run('git diff --cached --quiet', kitDir);
+    run('git', ['diff', '--cached', '--quiet'], kitDir);
   } catch {
     hasStagedChanges = true;
   }
@@ -133,18 +111,18 @@ function commitTransformations(kitDir, dryRun) {
   }
 
   // Configure git identity (ARC runners may not have global config)
-  try { run('git config user.name "github-actions[bot]"', kitDir); } catch { /* already set */ }
-  try { run('git config user.email "github-actions[bot]@users.noreply.github.com"', kitDir); } catch { /* already set */ }
+  try { run('git', ['config', 'user.name', 'github-actions[bot]'], kitDir); } catch { /* already set */ }
+  try { run('git', ['config', 'user.email', 'github-actions[bot]@users.noreply.github.com'], kitDir); } catch { /* already set */ }
 
   const msg = 'chore(ci): update metadata, prefixes, and versions [skip ci]';
-  run(`git commit -m "${msg}"`, kitDir);
+  run('git', ['commit', '-m', msg], kitDir);
   console.log('[release] Committed transformations');
 
   // Push with retry (up to 3 attempts, rebase on conflict)
   const MAX_RETRIES = 3;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      run('git push origin HEAD', kitDir);
+      run('git', ['push', 'origin', 'HEAD'], kitDir);
       console.log('[release] Pushed transformation commit to origin');
       return;
     } catch (pushErr) {
@@ -152,7 +130,7 @@ function commitTransformations(kitDir, dryRun) {
         throw new Error(`[release] Push failed after ${MAX_RETRIES} attempts: ${pushErr.message}`);
       }
       console.warn(`[release] Push attempt ${attempt} failed — rebasing and retrying...`);
-      run('git pull --rebase origin HEAD', kitDir);
+      run('git', ['pull', '--rebase', 'origin', 'HEAD'], kitDir);
     }
   }
 }
@@ -162,6 +140,5 @@ module.exports = {
   readModulesRegistry,
   listModuleNames,
   buildReleaseTag,
-  commitVersionBumps,
   commitTransformations,
 };

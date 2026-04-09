@@ -40,25 +40,25 @@ const {
   readModulesRegistry,
   listModuleNames,
   buildReleaseTag,
-  commitVersionBumps,
   commitTransformations,
 } = require('./release-modules-helpers.cjs');
 
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 const INJECT_SCRIPT    = path.join(__dirname, 'inject-origin-metadata.cjs');
 const PREFIX_SCRIPT    = path.join(__dirname, 'auto-prefix-agents.cjs');
 const VALIDATE_SCRIPT  = path.join(__dirname, 'validate-no-collisions.cjs');
 
 /**
- * Run a script via node, inheriting stdio, with the given env overrides.
+ * Run a node script, inheriting stdio, with the given env overrides.
  * Throws on non-zero exit.
  */
 function runScript(scriptPath, cwd, envOverrides = {}) {
-  execSync(`node "${scriptPath}"`, {
+  execFileSync(process.execPath, [scriptPath], {
     cwd,
     env: { ...process.env, ...envOverrides },
     stdio: 'inherit',
+    windowsHide: true,
   });
 }
 

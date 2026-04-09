@@ -11,7 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const ROOT = path.resolve(__dirname, '..');
+const ROOT = process.env.KIT_DIR || path.resolve(__dirname, '..');
 const MODULES_FILE = process.env.MODULES_FILE || 't1k-modules.json';
 const modulesPath = path.join(ROOT, MODULES_FILE);
 

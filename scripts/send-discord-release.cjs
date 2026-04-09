@@ -82,9 +82,10 @@ function extractModuleRelease() {
   const date = new Date().toISOString().split('T')[0];
 
   try {
-    const raw = execSync(
-      `gh release view --repo "${GITHUB_REPO}" --json tagName,body`,
-      { encoding: 'utf8', timeout: 15000 }
+    const { execFileSync: execFileSyncLocal } = require('child_process');
+    const raw = execFileSyncLocal(
+      'gh', ['release', 'view', '--repo', GITHUB_REPO, '--json', 'tagName,body'],
+      { encoding: 'utf8', timeout: 15000, windowsHide: true }
     ).trim();
 
     const release = JSON.parse(raw);
@@ -249,7 +250,12 @@ function sendToDiscord(embed) {
   });
 
   req.setTimeout(10000, () => { console.error('[X] Timeout'); req.destroy(); process.exit(1); });
-  req.on('error', (err) => { console.error('[X] Error:', err); process.exit(1); });
+  req.on('error', (err) => {
+    // Strip webhook URL from error message to avoid leaking it in CI logs
+    const safeMessage = err.message ? err.message.replace(/https?:\/\/\S+/g, '<webhook-url>') : String(err);
+    console.error('[X] Error:', safeMessage);
+    process.exit(1);
+  });
   req.write(JSON.stringify(payload));
   req.end();
 }

@@ -129,9 +129,8 @@ function flattenModuleFiles(claudeDir, targetModule) {
         const srcSkillDir = path.join(moduleDir, 'skills', skillName);
         const dstSkillDir = path.join(claudeDir, 'skills', skillName);
 
-        // Collision detection: warn if destination already exists and is NOT from a module
-        if (fs.existsSync(dstSkillDir) && !isModulePath(srcSkillDir)) {
-          // The source is clearly from a module path — check if dst has no module lineage
+        // Collision detection: warn if destination already exists (kit-wide or another module placed it)
+        if (fs.existsSync(dstSkillDir)) {
           console.warn(
             `[${tag}] warn: skills/${skillName} already exists in .claude/skills/ — overwriting`,
           );

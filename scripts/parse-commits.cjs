@@ -13,7 +13,7 @@
 
 'use strict';
 
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 /**
  * Find the last release tag matching the pattern "modules-*".
@@ -21,9 +21,11 @@ const { execSync } = require('child_process');
  */
 function findLastReleaseTag(kitDir) {
   try {
-    const tag = execSync('git describe --tags --match "modules-*" --abbrev=0 2>/dev/null', {
+    const tag = execFileSync('git', ['describe', '--tags', '--match', 'modules-*', '--abbrev=0'], {
       cwd: kitDir,
       encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+      windowsHide: true,
     }).trim();
     return tag || null;
   } catch {
@@ -38,9 +40,11 @@ function findLastReleaseTag(kitDir) {
 function getCommitsSinceTag(kitDir, sinceTag) {
   const range = sinceTag ? `${sinceTag}..HEAD` : 'HEAD';
   try {
-    const raw = execSync(`git log --format="%H %s" ${range} 2>/dev/null`, {
+    const raw = execFileSync('git', ['log', '--format=%H %s', range], {
       cwd: kitDir,
       encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+      windowsHide: true,
     }).trim();
     return raw ? raw.split('\n').filter(Boolean) : [];
   } catch {

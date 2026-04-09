@@ -12,9 +12,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 
-const ROOT = path.resolve(__dirname, '..');
+const ROOT = process.env.KIT_DIR || path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
 const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 
@@ -36,9 +36,11 @@ if (!ZIP_NAME) { console.error('[X] ZIP_NAME env var not set'); process.exit(1);
 function computeDeletions() {
   try {
     // Get all release tags sorted by version
-    const tagsRaw = execSync('git tag --sort=-v:refname 2>/dev/null', {
+    const tagsRaw = execFileSync('git', ['tag', '--sort=-v:refname'], {
       cwd: ROOT,
       encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+      windowsHide: true,
     }).trim();
 
     if (!tagsRaw) return [];
@@ -49,9 +51,11 @@ function computeDeletions() {
     const allPrevFiles = new Set();
     for (const tag of tags) {
       try {
-        const files = execSync(`git ls-tree -r --name-only ${tag} -- .claude/`, {
+        const files = execFileSync('git', ['ls-tree', '-r', '--name-only', tag, '--', '.claude/'], {
           cwd: ROOT,
           encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'ignore'],
+          windowsHide: true,
         })
           .trim()
           .split('\n')
@@ -64,9 +68,11 @@ function computeDeletions() {
 
     // List .claude/ files at HEAD
     const currentFiles = new Set(
-      execSync('git ls-tree -r --name-only HEAD -- .claude/', {
+      execFileSync('git', ['ls-tree', '-r', '--name-only', 'HEAD', '--', '.claude/'], {
         cwd: ROOT,
         encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'ignore'],
+        windowsHide: true,
       })
         .trim()
         .split('\n')
@@ -237,20 +243,24 @@ const excludes = [
   '__pycache__/*',
 ];
 
-const excludeArgs = excludes.map((e) => `-x '${e}'`).join(' ');
-const includeArgs = ZIP_INCLUDES.join(' ');
-
 // Check if any included paths exist before trying to ZIP
 const existingIncludes = ZIP_INCLUDES.filter((p) => fs.existsSync(path.join(ROOT, p)));
 if (existingIncludes.length === 0) {
   console.log(`[bundle] No includable paths found (${ZIP_INCLUDES.join(', ')}). Skipping ZIP.`);
 } else {
-  const includeArgs = existingIncludes.join(' ');
-  console.log(`[bundle] Including: ${includeArgs}`);
+  console.log(`[bundle] Including: ${existingIncludes.join(' ')}`);
+
+  // Build exclude args as individual -x pattern pairs (zip requires -x before each pattern)
+  const excludeArgsList = [];
+  for (const e of excludes) {
+    excludeArgsList.push('-x', e);
+  }
 
   try {
-    execSync(`cd "${ROOT}" && zip -r "${zipPath}" ${includeArgs} ${excludeArgs}`, {
+    execFileSync('zip', ['-r', zipPath, ...existingIncludes, ...excludeArgsList], {
+      cwd: ROOT,
       stdio: 'inherit',
+      windowsHide: true,
     });
     const stats = fs.statSync(zipPath);
     const sizeMB = (stats.size / 1024 / 1024).toFixed(2);

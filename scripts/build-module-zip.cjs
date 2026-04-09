@@ -30,7 +30,7 @@
 
 const fs   = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const { generateManifestFromList, writeManifest } = require('./generate-module-manifest.cjs');
 
 /**
@@ -134,9 +134,10 @@ function stageModuleFiles(moduleName, moduleEntry, moduleSourceDir, stagingClaud
 function createZip(stagingDir, zipPath) {
   fs.mkdirSync(path.dirname(zipPath), { recursive: true });
   // Use -r (recursive), -q (quiet), paths relative to stagingDir
-  execSync(`zip -r -q "${zipPath}" .`, {
+  execFileSync('zip', ['-r', '-q', zipPath, '.'], {
     cwd: stagingDir,
     stdio: 'inherit',
+    windowsHide: true,
   });
   const stats = fs.statSync(zipPath);
   console.log(`  [zip] ${path.basename(zipPath)} (${(stats.size / 1024).toFixed(1)} KB)`);

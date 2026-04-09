@@ -19,15 +19,15 @@
 
 'use strict';
 
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const path = require('path');
 const fs   = require('fs');
 
 /**
- * Run a shell command, returning stdout. Throws on non-zero exit.
+ * Run a git/gh command with execFileSync, returning stdout. Throws on non-zero exit.
  */
-function run(cmd, opts = {}) {
-  return execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'inherit'], ...opts }).trim();
+function runFile(prog, args, opts = {}) {
+  return execFileSync(prog, args, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'inherit'], windowsHide: true, ...opts }).trim();
 }
 
 /**
@@ -35,7 +35,10 @@ function run(cmd, opts = {}) {
  */
 function tagExists(kitDir, tag) {
   try {
-    run(`git rev-parse --verify "refs/tags/${tag}" 2>/dev/null`, { cwd: kitDir });
+    runFile('git', ['rev-parse', '--verify', `refs/tags/${tag}`], {
+      cwd: kitDir,
+      stdio: ['pipe', 'pipe', 'ignore'],
+    });
     return true;
   } catch {
     return false;
@@ -54,8 +57,8 @@ function createAndPushTag(kitDir, tag, dryRun) {
     console.log(`  [tag] dry-run: would create tag ${tag}`);
     return;
   }
-  run(`git tag "${tag}"`, { cwd: kitDir });
-  run(`git push origin "refs/tags/${tag}"`, { cwd: kitDir });
+  runFile('git', ['tag', tag], { cwd: kitDir });
+  runFile('git', ['push', 'origin', `refs/tags/${tag}`], { cwd: kitDir });
   console.log(`  [tag] Created and pushed: ${tag}`);
 }
 
@@ -155,20 +158,20 @@ function createGithubRelease({ releaseTag, kitName, kitRepo, kitDir, manifestPat
     return;
   }
 
-  // Build gh release create command
+  // Build gh release create args — no shell interpolation
   const allAssetPaths = [
     manifestPath,
     ...moduleAssets.filter(a => a.zipPath).map(a => a.zipPath),
     ...extraAssets.filter(p => fs.existsSync(p)),
   ];
-  const assetArgs = allAssetPaths.map(p => `"${p}"`).join(' ');
 
   const notesFile = path.join(path.dirname(manifestPath), '_release-notes.tmp.md');
   fs.writeFileSync(notesFile, notes);
 
   try {
-    run(
-      `gh release create "${releaseTag}" ${assetArgs} --repo "${kitRepo}" --title "${title}" --notes-file "${notesFile}"`,
+    runFile(
+      'gh',
+      ['release', 'create', releaseTag, ...allAssetPaths, '--repo', kitRepo, '--title', title, '--notes-file', notesFile],
       { cwd: kitDir },
     );
     console.log(`[release] Release created: https://github.com/${kitRepo}/releases/tag/${releaseTag}`);

@@ -18,6 +18,9 @@ const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
 const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 
+// RELEASE_VERSION env var overrides PKG.version — set by semantic-release @exec plugin
+const RELEASE_VERSION = process.env.RELEASE_VERSION || PKG.version;
+
 const KIT_NAME = process.env.KIT_NAME;
 const ZIP_NAME = process.env.ZIP_NAME;
 const GITHUB_REPO = process.env.GITHUB_REPO || PKG.repository?.url?.match(/github\.com[:/](.+?)(?:\.git)?$/)?.[1] || 'unknown/unknown';
@@ -195,7 +198,7 @@ if (modulesInfo) {
 const kitSlug = KIT_NAME.toLowerCase().replace(/\s+/g, '-');
 const metadata = {
   name: kitSlug,
-  version: PKG.version,
+  version: RELEASE_VERSION,
   buildDate: new Date().toISOString(),
   repository: GITHUB_REPO,
   ...(modulesInfo && { hasModules: true, moduleCount: modulesInfo.moduleCount, modules: modulesInfo.modules }),
@@ -206,7 +209,7 @@ const claudeDir = path.join(ROOT, '.claude');
 if (fs.existsSync(claudeDir)) {
   const metadataPath = path.join(claudeDir, 'metadata.json');
   fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2) + '\n');
-  console.log(`[metadata] Updated ${metadataPath} → v${PKG.version}`);
+  console.log(`[metadata] Updated ${metadataPath} → v${RELEASE_VERSION}`);
 } else {
   console.log('[metadata] No .claude/ directory — skipping metadata.json (non-kit repo)');
 }

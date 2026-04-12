@@ -1,0 +1,23 @@
+# t1k-origin: kit=theonekit-release-action | repo=The1Studio/theonekit-release-action | module=null | protected=true
+name: Quality Gates
+
+on:
+  pull_request:
+    paths:
+      - '.claude/**'
+      - '.github/workflows/quality-gates.yml'
+      - 'scripts/check-skill-cross-refs.cjs'
+      - 'scripts/check-t1k-manifest-deletions.cjs'
+  push:
+    branches: [main]
+    paths:
+      - '.claude/**'
+      - 'scripts/check-skill-cross-refs.cjs'
+      - 'scripts/check-t1k-manifest-deletions.cjs'
+
+jobs:
+  gates:
+    # Self-gate: uses local workflow path to avoid circular pinning dependency.
+    # This repo IS the reusable workflow source; pinning to its own released tag would
+    # require a tag to exist before the workflow can run — a bootstrap circular reference.
+    uses: ./.github/workflows/t1k-quality-gates.yml

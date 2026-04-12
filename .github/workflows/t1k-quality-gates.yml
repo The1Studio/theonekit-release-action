@@ -1,0 +1,38 @@
+# t1k-origin: kit=theonekit-release-action | repo=The1Studio/theonekit-release-action | module=null | protected=true
+name: T1K Quality Gates
+
+on:
+  workflow_call:
+    inputs:
+      release-action-ref:
+        description: 'Release-action tag or branch to pin (e.g., v1)'
+        type: string
+        default: 'v1'
+
+jobs:
+  quality-gates:
+    # ARC-only strict — no ubuntu-latest fallback (decision 2026-04-11)
+    # External fork PRs that cannot reach ARC must be rebased onto an org branch by maintainers.
+    runs-on: [self-hosted, arc, the1studio, org]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout caller
+        uses: actions/checkout@v4
+
+      - name: Checkout release-action
+        uses: actions/checkout@v4
+        with:
+          repository: The1Studio/theonekit-release-action
+          ref: ${{ inputs.release-action-ref }}
+          path: .release-action
+
+      - name: Ensure Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cross-ref integrity check
+        run: node ./.release-action/scripts/check-skill-cross-refs.cjs .
+
+      - name: Manifest deletions check
+        run: node ./.release-action/scripts/check-t1k-manifest-deletions.cjs .

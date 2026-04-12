@@ -64,6 +64,16 @@ runs:
         done
         echo "[inject] Hook scripts injected from release-action"
 
+    - name: Generate activation mappings from SKILL.md keywords
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: node ${{ github.action_path }}/scripts/generate-activation-from-skills.cjs "${{ github.workspace }}"
+
+    - name: Generate routing mappings from agent roles
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: node ${{ github.action_path }}/scripts/generate-routing-from-agents.cjs "${{ github.workspace }}"
+
     - name: Inject origin metadata
       shell: bash
       env:

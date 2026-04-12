@@ -30,13 +30,6 @@ jobs:
           ref: ${{ inputs.release-action-ref }}
           path: .release-action
 
-      - name: Checkout theonekit-core for cross-ref resolution
-        uses: actions/checkout@v4
-        with:
-          repository: The1Studio/theonekit-core
-          path: .theonekit-core
-        continue-on-error: true
-
       - name: Ensure Node 20
         uses: actions/setup-node@v4
         with:
@@ -44,8 +37,6 @@ jobs:
 
       - name: Cross-ref integrity check
         run: node ./.release-action/scripts/check-skill-cross-refs.cjs .
-        env:
-          T1K_EXTERNAL_ROOTS: ${{ github.workspace }}/.theonekit-core
 
       - name: Manifest deletions check
         run: node ./.release-action/scripts/check-t1k-manifest-deletions.cjs .

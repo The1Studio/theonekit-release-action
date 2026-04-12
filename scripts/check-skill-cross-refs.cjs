@@ -197,6 +197,56 @@ function resolveExternalKitRoots(kitRoot) {
   return [];
 }
 
+/**
+ * Supplement registry from activation fragments.
+ * Skills listed in t1k-activation-*.json mappings[].skills[] and sessionBaseline[]
+ * are considered registered — this resolves cross-kit references (e.g., kit repos
+ * referencing core skills like /t1k:cook) without needing the core repo checked out.
+ *
+ * Convention: activation skill "t1k-cook" → registry key "cook"
+ *             activation skill "t1k-unity:scene" → registry key "unity:scene"
+ *             activation skill "cook" (bare) → registry key "cook"
+ */
+function addSkillsFromActivationFragments(registry, kitRoot) {
+  const claudeDir = path.join(kitRoot, '.claude');
+  if (!fs.existsSync(claudeDir)) return;
+
+  const fragmentPattern = /^t1k-activation-.*\.json$/;
+  let entries;
+  try { entries = fs.readdirSync(claudeDir); } catch { return; }
+
+  for (const entry of entries) {
+    if (!fragmentPattern.test(entry)) continue;
+    try {
+      const raw = fs.readFileSync(path.join(claudeDir, entry), 'utf8');
+      const frag = JSON.parse(raw);
+
+      const skillNames = new Set();
+      if (Array.isArray(frag.sessionBaseline)) {
+        frag.sessionBaseline.forEach(s => skillNames.add(s));
+      }
+      if (Array.isArray(frag.mappings)) {
+        for (const m of frag.mappings) {
+          if (Array.isArray(m.skills)) m.skills.forEach(s => skillNames.add(s));
+        }
+      }
+
+      for (const raw of skillNames) {
+        // Normalize: "t1k-cook" → "cook", "t1k-unity:scene" → "unity:scene"
+        let key = raw;
+        if (key.startsWith('t1k-')) key = key.slice(4);
+        // Also handle colon-based names: "t1k:cook" → "cook"
+        for (const prefix of ['t1k:', 'gk:', 'ck:']) {
+          if (key.startsWith(prefix)) { key = key.slice(prefix.length); break; }
+        }
+        if (!registry.has(key)) {
+          registry.set(key, { filePath: path.join(claudeDir, entry), rawName: raw });
+        }
+      }
+    } catch { /* malformed fragment — skip */ }
+  }
+}
+
 function buildSkillRegistry(kitRoot) {
   const registry = new Map();
 
@@ -207,6 +257,13 @@ function buildSkillRegistry(kitRoot) {
   const externalRoots = resolveExternalKitRoots(kitRoot);
   for (const extRoot of externalRoots) {
     addSkillsFromDirs(registry, collectSkillDirs(extRoot));
+  }
+
+  // Supplement from activation fragments — resolves cross-kit refs
+  // (e.g., /t1k:cook in a kit that doesn't have core SKILL.md files)
+  addSkillsFromActivationFragments(registry, kitRoot);
+  for (const extRoot of externalRoots) {
+    addSkillsFromActivationFragments(registry, extRoot);
   }
 
   return registry;

@@ -6,18 +6,25 @@ on:
     paths:
       - '.claude/**'
       - '.github/workflows/quality-gates.yml'
-      - 'scripts/check-skill-cross-refs.cjs'
-      - 'scripts/check-t1k-manifest-deletions.cjs'
+      - '.github/workflows/t1k-quality-gates.yml'
+      - 'scripts/check-*.cjs'
+      - 'scripts/validate-*.cjs'
   push:
     branches: [main]
     paths:
       - '.claude/**'
-      - 'scripts/check-skill-cross-refs.cjs'
-      - 'scripts/check-t1k-manifest-deletions.cjs'
+      - '.github/workflows/quality-gates.yml'
+      - '.github/workflows/t1k-quality-gates.yml'
+      - 'scripts/check-*.cjs'
+      - 'scripts/validate-*.cjs'
 
 jobs:
   gates:
     # Self-gate: uses local workflow path to avoid circular pinning dependency.
     # This repo IS the reusable workflow source; pinning to its own released tag would
     # require a tag to exist before the workflow can run — a bootstrap circular reference.
+    # Pass current SHA so gate scripts run from the same commit being tested,
+    # not from the (possibly stale) v1 tag.
     uses: ./.github/workflows/t1k-quality-gates.yml
+    with:
+      release-action-ref: ${{ github.sha }}

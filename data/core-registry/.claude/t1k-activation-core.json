@@ -1,0 +1,434 @@
+{
+  "registryVersion": 1,
+  "kitName": "theonekit-core",
+  "priority": 10,
+  "description": "Core activation — lowest priority. Engine kits add higher-priority fragments.",
+  "sessionBaseline": [],
+  "mappings": [
+    {
+      "keywords": [
+        "module",
+        "modules",
+        "add module",
+        "remove module",
+        "split module",
+        "merge module",
+        "module audit",
+        "module validate",
+        "preset"
+      ],
+      "skills": [
+        "t1k-modules"
+      ]
+    },
+    {
+      "keywords": [
+        "kit validate",
+        "kit release",
+        "kit sync",
+        "kit scaffold",
+        "kit audit",
+        "kit migrate",
+        "kit test",
+        "kit health",
+        "kit status",
+        "cross-kit",
+        "maintainer",
+        "test kit",
+        "test install",
+        "test modules",
+        "e2e kit",
+        "validate installation",
+        "self-improving",
+        "auto-gotcha",
+        "gotcha generation",
+        "ai aggregation",
+        "learn from users"
+      ],
+      "skills": [
+        "t1k-kit"
+      ]
+    },
+    {
+      "keywords": [
+        "create agent",
+        "new agent",
+        "update agent",
+        "agent definition",
+        "agent template",
+        "scaffold agent"
+      ],
+      "skills": [
+        "t1k-agent-creator"
+      ]
+    },
+    {
+      "keywords": [
+        "create skill",
+        "new skill",
+        "update skill",
+        "skill template",
+        "scaffold skill",
+        "improve skill",
+        "skill gotchas",
+        "skill creator"
+      ],
+      "skills": [
+        "t1k-skill-creator"
+      ]
+    },
+    {
+      "keywords": [
+        "babysit pr",
+        "babysit-pr",
+        "watch pr",
+        "monitor pr",
+        "auto merge",
+        "flaky ci"
+      ],
+      "skills": [
+        "t1k-babysit-pr"
+      ]
+    },
+    {
+      "keywords": [
+        "predict",
+        "risk assessment",
+        "debate",
+        "expert review",
+        "before implementing"
+      ],
+      "skills": [
+        "t1k-predict"
+      ]
+    },
+    {
+      "keywords": [
+        "ship",
+        "release branch",
+        "ready to merge",
+        "create pr"
+      ],
+      "skills": [
+        "t1k-ship"
+      ]
+    },
+    {
+      "keywords": [
+        "preview",
+        "visualize",
+        "diagram",
+        "explain visually",
+        "slides",
+        "html output",
+        "visual diff",
+        "plan review",
+        "recap",
+        "ascii diagram",
+        "generate html",
+        "make slides",
+        "show diagram"
+      ],
+      "skills": [
+        "t1k-preview"
+      ]
+    },
+    {
+      "keywords": [
+        "scenario",
+        "edge cases",
+        "edge case",
+        "test scenarios",
+        "boundary testing",
+        "what could go wrong",
+        "risk analysis",
+        "corner cases"
+      ],
+      "skills": [
+        "t1k-scenario"
+      ]
+    },
+    {
+      "keywords": [
+        "find skill",
+        "search skill",
+        "what skill",
+        "available skills",
+        "discover",
+        "how do I",
+        "which skill",
+        "skill for",
+        "list skills",
+        "skill search"
+      ],
+      "skills": [
+        "t1k-find-skill"
+      ]
+    },
+    {
+      "keywords": [
+        "handoff",
+        "hand off",
+        "transition",
+        "context transfer",
+        "session save",
+        "session resume",
+        "save progress",
+        "resume session",
+        "where did I leave off",
+        "switch sessions"
+      ],
+      "skills": [
+        "t1k-handoff"
+      ]
+    },
+    {
+      "keywords": [
+        "team",
+        "agent team",
+        "parallel agents",
+        "multi-agent",
+        "spawn team",
+        "teammates",
+        "team research",
+        "team cook",
+        "team review",
+        "team debug",
+        "team triage"
+      ],
+      "skills": [
+        "t1k-team"
+      ]
+    },
+    {
+      "keywords": [
+        "context engineering",
+        "token optimization",
+        "context degradation",
+        "context window",
+        "token usage",
+        "attention management",
+        "context isolation",
+        "skill injection",
+        "agent context"
+      ],
+      "skills": [
+        "t1k-context"
+      ]
+    },
+    {
+      "keywords": [
+        "stuck",
+        "problem solving",
+        "complexity spiral",
+        "innovation block",
+        "simplification",
+        "inversion",
+        "scale game",
+        "meta-pattern",
+        "collision zone"
+      ],
+      "skills": [
+        "t1k-problem-solve"
+      ]
+    },
+    {
+      "keywords": [
+        "sequential thinking",
+        "step by step",
+        "think through",
+        "decompose",
+        "hypothesis",
+        "course correction",
+        "structured reasoning"
+      ],
+      "skills": [
+        "t1k-think"
+      ]
+    },
+    {
+      "keywords": [
+        "sync back",
+        "sync-back",
+        "push changes",
+        "push to kit",
+        "sync skill",
+        "sync agent",
+        "sync rule",
+        "update upstream"
+      ],
+      "skills": [
+        "t1k-sync-back"
+      ]
+    },
+    {
+      "keywords": [
+        "report issue",
+        "report bug",
+        "skill bug",
+        "agent bug",
+        "file issue",
+        "create issue",
+        "skill issue",
+        "missing gotcha"
+      ],
+      "skills": [
+        "t1k-issue"
+      ]
+    },
+    {
+      "keywords": [
+        "worktree",
+        "git worktree",
+        "parallel development",
+        "isolated branch",
+        "worktree create",
+        "worktree remove",
+        "worktree merge",
+        "worktree sync",
+        "worktree status",
+        "worktree diff"
+      ],
+      "skills": [
+        "t1k-worktree"
+      ]
+    },
+    {
+      "keywords": [
+        "security audit",
+        "security review",
+        "STRIDE",
+        "OWASP",
+        "threat model",
+        "vulnerability",
+        "injection",
+        "XSS",
+        "CSRF",
+        "authentication review",
+        "authorization check",
+        "pentest",
+        "security scan"
+      ],
+      "skills": [
+        "t1k-security"
+      ]
+    },
+    {
+      "keywords": [
+        "knowledge-graph",
+        "code-analysis",
+        "tree-sitter",
+        "codebase-understanding",
+        "ast",
+        "graphify"
+      ],
+      "skills": [
+        "t1k-graphify"
+      ]
+    },
+    {
+      "keywords": [
+        "codebase",
+        "pack",
+        "snapshot",
+        "llm-context",
+        "repomix"
+      ],
+      "skills": [
+        "t1k-repomix"
+      ]
+    },
+    {
+      "keywords": [
+        "retrospective",
+        "sprint",
+        "metrics",
+        "review",
+        "git"
+      ],
+      "skills": [
+        "t1k-retro"
+      ]
+    },
+    {
+      "keywords": [
+        "port",
+        "extract",
+        "compare",
+        "feature",
+        "repo",
+        "xia"
+      ],
+      "skills": [
+        "t1k-xia"
+      ]
+    },
+    {
+      "keywords": ["implement", "build", "feature", "cook", "code"],
+      "skills": ["t1k-cook"]
+    },
+    {
+      "keywords": ["plan", "architecture", "design", "roadmap"],
+      "skills": ["t1k-plan"]
+    },
+    {
+      "keywords": ["fix", "bug", "error", "compile", "broken"],
+      "skills": ["t1k-fix"]
+    },
+    {
+      "keywords": ["debug", "investigate", "trace", "root cause"],
+      "skills": ["t1k-debug"]
+    },
+    {
+      "keywords": ["test", "unit test", "coverage", "test suite"],
+      "skills": ["t1k-test"]
+    },
+    {
+      "keywords": ["review", "code review", "audit"],
+      "skills": ["t1k-review"]
+    },
+    {
+      "keywords": ["ask", "question", "how to", "explain"],
+      "skills": ["t1k-ask"]
+    },
+    {
+      "keywords": ["brainstorm", "ideation", "options", "alternatives"],
+      "skills": ["t1k-brainstorm"]
+    },
+    {
+      "keywords": ["scout", "explore", "find", "search codebase"],
+      "skills": ["t1k-scout"]
+    },
+    {
+      "keywords": ["docs", "documentation", "update docs"],
+      "skills": ["t1k-docs"]
+    },
+    {
+      "keywords": ["git", "commit", "push", "pull request"],
+      "skills": ["t1k-git"]
+    },
+    {
+      "keywords": ["triage", "issues", "pull requests", "backlog"],
+      "skills": ["t1k-triage"]
+    },
+    {
+      "keywords": ["doctor", "validate", "health check", "registry"],
+      "skills": ["t1k-doctor"]
+    },
+    {
+      "keywords": ["watzup", "session review", "progress", "wrap up"],
+      "skills": ["t1k-watzup"]
+    },
+    {
+      "keywords": ["help", "usage", "guide", "commands"],
+      "skills": ["t1k-help"]
+    }
+  ],
+  "_origin": {
+    "kit": "theonekit-core",
+    "repository": "The1Studio/theonekit-core",
+    "module": null,
+    "protected": true
+  }
+}
+

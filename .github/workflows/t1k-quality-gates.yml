@@ -30,15 +30,6 @@ jobs:
           ref: ${{ inputs.release-action-ref }}
           path: .release-action
 
-      - name: Fetch core activation fragment for cross-ref resolution
-        continue-on-error: true
-        run: |
-          mkdir -p .core-registry/.claude
-          curl -sL -H "Authorization: token ${{ github.token }}" \
-            -H "Accept: application/vnd.github.v3.raw" \
-            "https://api.github.com/repos/The1Studio/theonekit-core/contents/.claude/t1k-activation-core.json?ref=main" \
-            -o .core-registry/.claude/t1k-activation-core.json 2>/dev/null || true
-
       - name: Ensure Node 20
         uses: actions/setup-node@v4
         with:
@@ -47,7 +38,7 @@ jobs:
       - name: Cross-ref integrity check
         run: node ./.release-action/scripts/check-skill-cross-refs.cjs .
         env:
-          T1K_EXTERNAL_ROOTS: ${{ github.workspace }}/.core-registry
+          T1K_EXTERNAL_ROOTS: ${{ github.workspace }}/.release-action/data/core-registry
 
       - name: Manifest deletions check
         run: node ./.release-action/scripts/check-t1k-manifest-deletions.cjs .

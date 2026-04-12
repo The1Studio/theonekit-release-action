@@ -23,13 +23,14 @@
  * @param {string}   opts.kitDir            Absolute path to kit repo root
  * @param {string}   opts.outputDir         Directory to write the ZIP into
  * @param {boolean}  [opts.dryRun=false]    If true, skip ZIP creation
- * @returns {{ zipPath: string, manifest: object }}
+ * @returns {{ zipPath: string, manifest: object, checksum: string|null }}
  */
 
 'use strict';
 
-const fs   = require('fs');
-const path = require('path');
+const fs     = require('fs');
+const path   = require('path');
+const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const { generateManifestFromList, writeManifest } = require('./generate-module-manifest.cjs');
 
@@ -181,14 +182,19 @@ function buildModuleZip({ moduleName, version, kitName, kitRepo, moduleEntry, ki
 
     if (dryRun) {
       console.log(`  [dry-run] would create: ${moduleName}-${version}.zip (${stagedPaths.length} file(s) + manifest)`);
-      return { zipPath: null, manifest };
+      return { zipPath: null, manifest, checksum: null };
     }
 
     // Create ZIP
     const zipPath = path.join(outputDir, `${moduleName}-${version}.zip`);
     createZip(stagingDir, zipPath);
 
-    return { zipPath, manifest };
+    // Compute SHA-256 checksum of the built ZIP
+    const zipBuffer = fs.readFileSync(zipPath);
+    const checksum = 'sha256:' + crypto.createHash('sha256').update(zipBuffer).digest('hex');
+    console.log(`  [checksum] ${path.basename(zipPath)} → ${checksum}`);
+
+    return { zipPath, manifest, checksum };
   } finally {
     // Clean up staging dir
     fs.rmSync(stagingDir, { recursive: true, force: true });

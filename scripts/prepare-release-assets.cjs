@@ -10,8 +10,9 @@
  *   MODULES_FILE — path to t1k-modules.json (optional; enables module metadata)
  */
 
-const fs = require('fs');
-const path = require('path');
+const fs     = require('fs');
+const path   = require('path');
+const crypto = require('crypto');
 const { execSync, execFileSync } = require('child_process');
 
 const ROOT = process.env.KIT_DIR || path.resolve(__dirname, '..');
@@ -265,6 +266,20 @@ if (existingIncludes.length === 0) {
     const stats = fs.statSync(zipPath);
     const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
     console.log(`[bundle] Created ${zipPath} (${sizeMB} MB)`);
+
+    // Compute SHA-256 checksum of the built ZIP and embed in metadata
+    const zipBuffer = fs.readFileSync(zipPath);
+    const checksum = 'sha256:' + crypto.createHash('sha256').update(zipBuffer).digest('hex');
+    console.log(`[bundle] Checksum: ${checksum}`);
+
+    // Update metadata.json with checksum (metadata object was written before ZIP creation)
+    if (fs.existsSync(claudeDir)) {
+      const metadataPath = path.join(claudeDir, 'metadata.json');
+      const meta = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+      meta.checksum = checksum;
+      fs.writeFileSync(metadataPath, JSON.stringify(meta, null, 2) + '\n');
+      console.log(`[metadata] Updated ${metadataPath} with checksum`);
+    }
   } catch (err) {
     console.error('[bundle] Failed to create ZIP:', err.message);
     process.exit(1);

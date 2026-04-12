@@ -235,7 +235,7 @@ function buildAllZips(moduleNames, registry, moduleVersions, kitName, kitRepo, o
     }
 
     const version = moduleVersions[modName] || '0.0.0';
-    const { zipPath, manifest } = buildModuleZip({
+    const { zipPath, manifest, checksum } = buildModuleZip({
       moduleName:  modName,
       version,
       kitName,
@@ -246,7 +246,7 @@ function buildAllZips(moduleNames, registry, moduleVersions, kitName, kitRepo, o
       dryRun,
     });
 
-    assets.push({ name: modName, version, zipPath, manifest });
+    assets.push({ name: modName, version, zipPath, manifest, checksum });
   }
 
   return assets;
@@ -349,9 +349,14 @@ async function main() {
   const moduleAssets = buildAllZips(moduleNames, finalRegistry, moduleVersions, kitName, kitRepo, outputDir);
 
   // Step 5: Build release manifest.json
+  // Build a checksum map from the ZIP build results
+  const moduleChecksums = {};
+  for (const asset of moduleAssets) {
+    if (asset.checksum) moduleChecksums[asset.name] = asset.checksum;
+  }
   const releaseTag   = buildReleaseTag();
   const manifestPath = path.join(outputDir, 'manifest.json');
-  buildReleaseManifest({ kitName, kitRepo, releaseTag, kitDir: KIT_DIR, outputPath: manifestPath, dryRun });
+  buildReleaseManifest({ kitName, kitRepo, releaseTag, kitDir: KIT_DIR, outputPath: manifestPath, moduleChecksums, dryRun });
 
   // Step 5b: Collect extra release assets (keyword file, etc.)
   const extraAssets = [];

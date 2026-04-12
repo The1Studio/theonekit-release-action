@@ -1,0 +1,63 @@
+name: Post-Release Smoke Test
+
+on:
+  workflow_call:
+    inputs:
+      release-tag:
+        required: true
+        type: string
+      kit-name:
+        required: true
+        type: string
+      modular:
+        type: boolean
+        default: false
+      github-repo:
+        required: true
+        type: string
+
+jobs:
+  smoke-test:
+    runs-on: [self-hosted, arc, the1studio, org]
+    timeout-minutes: 5
+    steps:
+      - name: Download release assets
+        run: |
+          mkdir -p release-test
+          gh release download "${{ inputs.release-tag }}" \
+            --repo "${{ inputs.github-repo }}" \
+            --dir release-test
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Extract ZIP
+        run: |
+          cd release-test
+          for f in *.zip; do unzip -o "$f" -d extracted; done
+
+      - name: Checkout smoke test script
+        uses: actions/checkout@v4
+        with:
+          repository: The1Studio/theonekit-release-action
+          ref: v1
+          path: .release-action
+          sparse-checkout: scripts/post-release-smoke-test.cjs
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run smoke test
+        continue-on-error: true
+        run: |
+          node .release-action/scripts/post-release-smoke-test.cjs \
+            release-test/extracted \
+            "${{ inputs.release-tag }}"
+        env:
+          MODULAR: ${{ inputs.modular }}
+          MANIFEST_PATH: release-test/manifest.json
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf release-test .release-action

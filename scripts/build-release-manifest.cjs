@@ -14,12 +14,14 @@
  *       "version": "1.0.0",
  *       "required": true,
  *       "asset": "unity-base-1.0.0.zip",
+ *       "checksum": "sha256:abc123...",
  *       "dependencies": {}
  *     },
  *     "dots-core": {
  *       "version": "2.2.0",
  *       "required": false,
  *       "asset": "dots-core-2.2.0.zip",
+ *       "checksum": "sha256:def456...",
  *       "dependencies": { "unity-base": ">=1.0.0" }
  *     }
  *   }
@@ -53,15 +55,16 @@ function readModuleJson(moduleDir) {
  * Build the release manifest.json from all module.json files in the kit.
  *
  * @param {object} opts
- * @param {string} opts.kitName       e.g. "theonekit-unity"
- * @param {string} opts.kitRepo       e.g. "The1Studio/theonekit-unity"
- * @param {string} opts.releaseTag    e.g. "modules-20260327-1200"
- * @param {string} opts.kitDir        Absolute path to kit repo root.
- * @param {string} opts.outputPath    Absolute path to write manifest.json.
+ * @param {string} opts.kitName          e.g. "theonekit-unity"
+ * @param {string} opts.kitRepo          e.g. "The1Studio/theonekit-unity"
+ * @param {string} opts.releaseTag       e.g. "modules-20260327-1200"
+ * @param {string} opts.kitDir           Absolute path to kit repo root.
+ * @param {string} opts.outputPath       Absolute path to write manifest.json.
+ * @param {object} [opts.moduleChecksums] Map of moduleName → "sha256:<hex>" strings.
  * @param {boolean} [opts.dryRun]
  * @returns {object}  The manifest object.
  */
-function buildReleaseManifest({ kitName, kitRepo, releaseTag, kitDir, outputPath, dryRun = false }) {
+function buildReleaseManifest({ kitName, kitRepo, releaseTag, kitDir, outputPath, moduleChecksums = {}, dryRun = false }) {
   const modulesRootDir = path.join(kitDir, '.claude', 'modules');
 
   if (!fs.existsSync(modulesRootDir)) {
@@ -93,6 +96,7 @@ function buildReleaseManifest({ kitName, kitRepo, releaseTag, kitDir, outputPath
       version,
       required: modJson.required === true,
       asset: `${modName}-${version}.zip`,
+      ...(moduleChecksums[modName] && { checksum: moduleChecksums[modName] }),
       dependencies: modJson.dependencies || {},
     };
 

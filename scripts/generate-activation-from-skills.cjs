@@ -184,24 +184,60 @@ if (skillsToAdd.length === 0) {
     process.exit(0);
 }
 
-// Determine the target fragment: lowest-priority existing one, or create auto fragment
+// Determine the target fragment: lowest-priority existing one with priority < 90,
+// or create a new auto fragment. Generators must NOT write to module-level
+// fragments (priority >= 90) — those are owned by individual modules.
 let targetEntry;
-if (fragments.length > 0) {
-    // Use the lowest-priority fragment (first after sorting ascending)
-    targetEntry = fragments[0];
+const eligibleFragments = fragments.filter(e => (e.fragment.priority || 0) < 90);
+if (eligibleFragments.length > 0) {
+    // Use the lowest-priority eligible fragment (first after sorting ascending)
+    targetEntry = eligibleFragments[0];
 } else {
-    // Create a new auto fragment
+    // All existing fragments are module-level (priority >= 90), or none exist —
+    // create a new kit-level auto fragment at priority 5.
     const autoPath = path.join(claudeDir, 't1k-activation-auto.json');
-    const autoFragment = {
-        registryVersion: 1,
-        kitName: 'auto-generated',
-        priority: 5,
-        description: 'Auto-generated activation mappings from SKILL.md frontmatter keywords.',
-        sessionBaseline: [],
-        mappings: [],
-    };
+    // Preserve existing file if it is already there (may have been partially written)
+    let autoFragment;
+    if (fs.existsSync(autoPath)) {
+        try {
+            autoFragment = JSON.parse(fs.readFileSync(autoPath, 'utf8'));
+        } catch (_) {
+            autoFragment = null;
+        }
+    }
+    if (!autoFragment) {
+        // Read kitName from metadata.json if available
+        let kitName = 'auto';
+        const metaPath = path.join(claudeDir, 'metadata.json');
+        if (fs.existsSync(metaPath)) {
+            try {
+                const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+                if (meta.name) kitName = meta.name;
+            } catch (_) { /* ignore */ }
+        }
+        autoFragment = {
+            _generated: new Date().toISOString(),
+            _generatedBy: 'generate-activation-from-skills.cjs',
+            _generatedFrom: 'SKILL.md keywords: frontmatter — edit skills/*/SKILL.md instead of this file',
+            registryVersion: 1,
+            kitName,
+            priority: 5,
+            description: 'Auto-generated activation mappings from SKILL.md frontmatter keywords.',
+            sessionBaseline: [],
+            mappings: [],
+        };
+    }
     targetEntry = { filePath: autoPath, fragment: autoFragment };
     fragments.push(targetEntry);
+}
+
+// Update _generated timestamp on the target fragment (new or existing)
+targetEntry.fragment._generated = new Date().toISOString();
+if (!targetEntry.fragment._generatedBy) {
+    targetEntry.fragment._generatedBy = 'generate-activation-from-skills.cjs';
+}
+if (!targetEntry.fragment._generatedFrom) {
+    targetEntry.fragment._generatedFrom = 'SKILL.md keywords: frontmatter — edit skills/*/SKILL.md instead of this file';
 }
 
 // Add new mappings to the target fragment

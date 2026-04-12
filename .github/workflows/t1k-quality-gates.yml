@@ -36,3 +36,15 @@ jobs:
 
       - name: Manifest deletions check
         run: node ./.release-action/scripts/check-t1k-manifest-deletions.cjs .
+
+      - name: Settings schema check
+        run: node ./.release-action/scripts/validate-settings-schema.cjs .
+
+      - name: Activation coverage check
+        run: node ./.release-action/scripts/validate-activation-coverage.cjs .
+
+      - name: Routing coverage check
+        run: node ./.release-action/scripts/validate-routing-coverage.cjs .
+
+      - name: Cross-platform patterns check
+        run: node ./.release-action/scripts/validate-cross-platform.cjs .

@@ -1,0 +1,62 @@
+name: Sync Core Registry
+
+# Triggered by theonekit-core after a successful release.
+# Downloads the latest core activation fragment and commits it to
+# data/core-registry/.claude/ so quality gates can resolve cross-kit refs.
+
+on:
+  repository_dispatch:
+    types: [core-released]
+  workflow_dispatch: # manual trigger for testing
+
+jobs:
+  sync:
+    runs-on: [self-hosted, arc, the1studio, org]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download core activation fragment
+        env:
+          GH_TOKEN: ${{ secrets.T1K_CROSS_REPO_PAT }}
+        run: |
+          mkdir -p .tmp-core
+
+          if ! gh release download --repo The1Studio/theonekit-core \
+            --pattern 'theonekit-core.zip' \
+            --dir .tmp-core 2>/dev/null; then
+            echo "::warning::Failed to download theonekit-core release — skipping sync"
+            exit 0
+          fi
+
+          unzip -q .tmp-core/theonekit-core.zip -d .tmp-core/extracted
+
+          SRC=".tmp-core/extracted/.claude/t1k-activation-core.json"
+          DEST="data/core-registry/.claude/t1k-activation-core.json"
+
+          if [ ! -f "$SRC" ]; then
+            echo "::warning::t1k-activation-core.json not found in release ZIP — skipping"
+            rm -rf .tmp-core
+            exit 0
+          fi
+
+          if diff -q "$SRC" "$DEST" > /dev/null 2>&1; then
+            echo "Fragment unchanged — no update needed"
+            rm -rf .tmp-core
+            exit 0
+          fi
+
+          cp "$SRC" "$DEST"
+          rm -rf .tmp-core
+          echo "Fragment updated — will commit"
+
+      - name: Commit updated fragment
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/core-registry/.claude/t1k-activation-core.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(ci): sync core activation fragment from latest release"
+            git push
+          fi

@@ -69,9 +69,9 @@ jobs:
               echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
               export PATH="$HOME/.bun/bin:$PATH"
             fi
-            bun install && bun run build 2>/dev/null || true
+            bun install && (bun run build 2>/dev/null || echo "::notice::No build script found — skipping bun build")
             # Build UI if script exists (for CLI projects with dashboard)
-            bun run ui:build 2>/dev/null || true
+            bun run ui:build 2>/dev/null || echo "::notice::No ui:build script found — skipping"
           fi
           npm ci
 
@@ -206,10 +206,15 @@ jobs:
           RELEASE_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ -n "$RELEASE_TAG" ]; then
             mkdir -p .smoke-test
-            gh release download "$RELEASE_TAG" --repo "${{ github.repository }}" --dir .smoke-test 2>/dev/null || true
+            if ! gh release download "$RELEASE_TAG" --repo "${{ github.repository }}" --dir .smoke-test 2>/dev/null; then
+              echo "::warning::Failed to download release $RELEASE_TAG — skipping smoke test"
+              exit 0
+            fi
             # Extract ZIPs for validation
             for f in .smoke-test/*.zip; do
-              [ -f "$f" ] && unzip -q -o "$f" -d .smoke-test/extracted 2>/dev/null || true
+              if [ -f "$f" ]; then
+                unzip -q -o "$f" -d .smoke-test/extracted 2>/dev/null || echo "::warning::Failed to extract $(basename "$f") — skipping"
+              fi
             done
             if [ -d ".smoke-test/extracted" ]; then
               node .release-scripts/post-release-smoke-test.cjs .smoke-test/extracted "$RELEASE_TAG"

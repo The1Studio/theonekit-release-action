@@ -79,7 +79,7 @@ jobs:
         run: |
           mkdir -p .release-scripts
           # Use GitHub API to avoid raw.githubusercontent.com caching
-          for script in prepare-release-assets.cjs send-discord-release.cjs validate-modules.cjs generate-module-keywords.cjs flatten-module-files.cjs inject-origin-metadata.cjs generate-module-docs.cjs release-modules.cjs release-modules-helpers.cjs parse-commits.cjs compute-version-bump.cjs build-module-zip.cjs build-release-manifest.cjs generate-module-manifest.cjs create-github-release.cjs auto-prefix-agents.cjs validate-no-collisions.cjs; do
+          for script in prepare-release-assets.cjs send-discord-release.cjs validate-modules.cjs generate-module-keywords.cjs flatten-module-files.cjs inject-origin-metadata.cjs generate-module-docs.cjs release-modules.cjs release-modules-helpers.cjs parse-commits.cjs compute-version-bump.cjs build-module-zip.cjs build-release-manifest.cjs generate-module-manifest.cjs create-github-release.cjs auto-prefix-agents.cjs validate-no-collisions.cjs generate-activation-from-skills.cjs generate-routing-from-agents.cjs auto-compute-deletions.cjs post-release-smoke-test.cjs; do
             curl -sL -H "Authorization: token ${{ github.token }}" \
               -H "Accept: application/vnd.github.v3.raw" \
               "https://api.github.com/repos/The1Studio/theonekit-release-action/contents/scripts/$script?ref=main" \
@@ -97,6 +97,17 @@ jobs:
         env:
           MODULES_FILE: ${{ inputs.modules-file }}
         run: node .release-scripts/generate-module-keywords.cjs
+
+      - name: Auto-generate activation mappings from skill keywords
+        run: node .release-scripts/generate-activation-from-skills.cjs .
+
+      - name: Auto-generate routing mappings from agent roles
+        run: node .release-scripts/generate-routing-from-agents.cjs .
+
+      - name: Auto-compute deletions from git history
+        env:
+          MODULES_FILE: ${{ inputs.modular && inputs.modules-file || '' }}
+        run: node .release-scripts/auto-compute-deletions.cjs .
 
       - name: Inject origin metadata
         if: inputs.release-mode != 'modules'
@@ -183,6 +194,32 @@ jobs:
           RELEASE_MODE: ${{ inputs.release-mode }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node .release-scripts/send-discord-release.cjs
+
+      - name: Post-release smoke test
+        if: steps.release.outputs.new_release == 'true' || steps.module-release.outputs.new_release == 'true'
+        continue-on-error: true
+        env:
+          MODULAR: ${{ inputs.modular }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Download the just-created release and validate it
+          RELEASE_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$RELEASE_TAG" ]; then
+            mkdir -p .smoke-test
+            gh release download "$RELEASE_TAG" --repo "${{ github.repository }}" --dir .smoke-test 2>/dev/null || true
+            # Extract ZIPs for validation
+            for f in .smoke-test/*.zip; do
+              [ -f "$f" ] && unzip -q -o "$f" -d .smoke-test/extracted 2>/dev/null || true
+            done
+            if [ -d ".smoke-test/extracted" ]; then
+              node .release-scripts/post-release-smoke-test.cjs .smoke-test/extracted "$RELEASE_TAG"
+            else
+              echo "::warning::No ZIP extracted — skipping smoke test"
+            fi
+            rm -rf .smoke-test
+          else
+            echo "::warning::No release tag found — skipping smoke test"
+          fi
 
       - name: Cleanup
         if: always()

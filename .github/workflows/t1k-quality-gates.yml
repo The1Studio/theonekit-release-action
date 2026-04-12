@@ -8,6 +8,10 @@ on:
         description: 'Release-action tag or branch to pin (e.g., v1)'
         type: string
         default: 'v1'
+      external-roots:
+        description: 'Colon-separated paths to sibling kit repos for cross-kit collision detection (optional)'
+        type: string
+        default: ''
 
 jobs:
   quality-gates:
@@ -48,3 +52,18 @@ jobs:
 
       - name: Cross-platform patterns check
         run: node ./.release-action/scripts/validate-cross-platform.cjs .
+
+      - name: Registry schema validation
+        run: node ./.release-action/scripts/validate-registry-schema.cjs .
+
+      - name: Frontmatter validation
+        run: node ./.release-action/scripts/validate-frontmatter.cjs .
+
+      - name: Generated file integrity check
+        run: node ./.release-action/scripts/validate-generated-file-integrity.cjs .
+
+      - name: Cross-kit collision detection
+        if: inputs.external-roots != ''
+        run: node ./.release-action/scripts/detect-cross-kit-collisions.cjs .
+        env:
+          T1K_EXTERNAL_ROOTS: ${{ inputs.external-roots }}

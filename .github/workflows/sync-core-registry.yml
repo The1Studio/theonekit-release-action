@@ -17,9 +17,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Generate App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.T1K_APP_ID }}
+          private-key: ${{ secrets.T1K_APP_PRIVATE_KEY }}
+          owner: The1Studio
+          repositories: theonekit-core,theonekit-release-action
+
       - name: Download core activation fragment
         env:
-          GH_TOKEN: ${{ secrets.T1K_CROSS_REPO_PAT }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           mkdir -p .tmp-core
 

@@ -35,6 +35,11 @@ on:
         required: false
         type: string
         default: ''
+      scripts-ref:
+        description: 'Git ref for downloading release scripts (should match the workflow tag, e.g., v1, v2)'
+        required: false
+        type: string
+        default: 'v2'
     secrets:
       discord-webhook-url:
         description: 'Discord webhook URL (optional — skip Discord if empty)'
@@ -82,7 +87,7 @@ jobs:
           for script in prepare-release-assets.cjs send-discord-release.cjs validate-modules.cjs generate-module-keywords.cjs flatten-module-files.cjs inject-origin-metadata.cjs generate-module-docs.cjs release-modules.cjs release-modules-helpers.cjs parse-commits.cjs compute-version-bump.cjs build-module-zip.cjs build-release-manifest.cjs generate-module-manifest.cjs create-github-release.cjs auto-prefix-agents.cjs validate-no-collisions.cjs generate-activation-from-skills.cjs generate-routing-from-agents.cjs auto-compute-deletions.cjs post-release-smoke-test.cjs; do
             curl -sL -H "Authorization: token ${{ github.token }}" \
               -H "Accept: application/vnd.github.v3.raw" \
-              "https://api.github.com/repos/The1Studio/theonekit-release-action/contents/scripts/$script?ref=main" \
+              "https://api.github.com/repos/The1Studio/theonekit-release-action/contents/scripts/$script?ref=${{ inputs.scripts-ref }}" \
               -o ".release-scripts/$script"
           done
 

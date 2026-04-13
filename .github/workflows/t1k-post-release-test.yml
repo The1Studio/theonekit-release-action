@@ -36,17 +36,17 @@ jobs:
           for f in *.zip; do unzip -o "$f" -d extracted; done
 
       - name: Checkout smoke test script
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: The1Studio/theonekit-release-action
-          ref: v1
+          ref: v2
           path: .release-action
           sparse-checkout: scripts/post-release-smoke-test.cjs
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Run smoke test
         continue-on-error: true

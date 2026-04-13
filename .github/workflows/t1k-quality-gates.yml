@@ -7,7 +7,7 @@ on:
       release-action-ref:
         description: 'Release-action tag or branch to pin (e.g., v1)'
         type: string
-        default: 'v1'
+        default: 'v2'
       external-roots:
         description: 'Colon-separated paths to sibling kit repos for cross-kit collision detection (optional)'
         type: string
@@ -21,19 +21,19 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout caller
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Checkout release-action
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: The1Studio/theonekit-release-action
           ref: ${{ inputs.release-action-ref }}
           path: .release-action
 
-      - name: Ensure Node 20
-        uses: actions/setup-node@v4
+      - name: Ensure Node 22
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Cross-ref integrity check
         run: node ./.release-action/scripts/check-skill-cross-refs.cjs .

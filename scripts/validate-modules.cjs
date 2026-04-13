@@ -108,10 +108,15 @@ for (const [name, mod] of Object.entries(modules)) {
   // Agents — search in .claude/agents/, modules/{name}/agents/, .claude/modules/{name}/agents/
   if (mod.agents && Array.isArray(mod.agents)) {
     for (const agent of mod.agents) {
+      // Agent names in module.json are bare (e.g., "nakama-developer").
+      // Files on disk have .md extension. Check both with and without.
       const agentCandidates = [
         path.join(ROOT, '.claude', 'agents', agent),
+        path.join(ROOT, '.claude', 'agents', agent + '.md'),
         path.join(ROOT, '.claude', 'modules', name, 'agents', agent),
+        path.join(ROOT, '.claude', 'modules', name, 'agents', agent + '.md'),
         path.join(ROOT, 'modules', name, 'agents', agent),
+        path.join(ROOT, 'modules', name, 'agents', agent + '.md'),
       ];
       if (!agentCandidates.some(p => fs.existsSync(p))) {
         fail(`Agent "${agent}" (module: ${name}) not found in .claude/agents/ or modules/${name}/agents/`);
